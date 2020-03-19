@@ -14,6 +14,7 @@ from datetime import datetime
 
 # Load model
 # TODO allow model selection as flag
+# TODO save model after first download and load from there
 module_path = 'https://tfhub.dev/deepmind/biggan-deep-256/1'  # 256x256 BigGAN-deep
 
 tf.reset_default_graph()
@@ -75,6 +76,8 @@ def sample(sess, noise, label, truncation=1., batch_size=8,
     s = slice(batch_start, min(num, batch_start + batch_size))
     feed_dict = {input_z: noise[s], input_y: label[s], input_trunc: truncation}
     ims.append(sess.run(output, feed_dict=feed_dict))
+
+
   ims = np.concatenate(ims, axis=0)
   assert ims.shape[0] == num
   ims = np.clip(((ims + 1) / 2.0) * 256, 0, 255)
@@ -159,12 +162,12 @@ def write_gif(ims, duration=4, fps=30, fname='ani.gif'):
 truncation = 1 #@param {type:"slider", min:0.02, max:1, step:0.02}
 #noise_seed_z = 57 #@param {type:"slider", min:0, max:100, step:1}
 #noise_seed_y = 0 #@param {type:"slider", min:0, max:100, step:1}
-duration = 8 #@param {type:"slider", min:1, max:10, step:0.5}
-num_samples = 8 #@param {type:"slider", min:1, max:100, step:1}
+duration = 4 #@param {type:"slider", min:1, max:10, step:0.5}
+num_samples = 1 #@param {type:"slider", min:1, max:100, step:1}
 
-def generate():
+def generate(fps=30):
 
-  num_interps = duration * 15 # fps
+  num_interps = duration * fps
 
   # # Random label vec
   # y = truncated_z_sample(1, truncation=truncation, seed=noise_seed_y, dim=vocab_size)
@@ -216,11 +219,18 @@ def generate():
     zs[:, axis] += np.cos(ts_4) * change_mag_quad
 
   # Generate images
+  t0 = datetime.now()
   ims = sample(sess, zs, ys, truncation=truncation)
+  t1 = datetime.now()
+  elapsed = (t1 - t0).seconds + 10 ** -6 * (t1 - t0).microseconds
+  print("{} sec to generate {} frames".format(elapsed, num_interps))
 
   # Create gif
   fname = datetime.now().strftime("%Y%M%d%H%M%S") + "_ani.gif"
-  write_gif(ims, duration=duration, fname=fname)
+  write_gif(ims, duration=duration, fname=fname, fps=fps)
+  t2 = datetime.now()
+  elapsed = (t2 - t1).seconds + 10 ** -6 * (t2 - t1).microseconds
+  print("{} sec to write gif".format(elapsed))
 
 # TODO generate multiple samples as a batch, not as a loop
 for _ in range(num_samples):
