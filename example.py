@@ -146,7 +146,6 @@ def write_gif(ims, duration=4, fps=30, fname='ani.gif'):
   def make_frame(t):
     # Given time in seconds, produce an array
 
-
     frame_num = int(t / duration * ims.shape[0])
     return ims[frame_num]
 
@@ -165,7 +164,7 @@ def write_gif(ims, duration=4, fps=30, fname='ani.gif'):
 truncation = 1 #@param {type:"slider", min:0.02, max:1, step:0.02}
 #noise_seed_z = 57 #@param {type:"slider", min:0, max:100, step:1}
 #noise_seed_y = 0 #@param {type:"slider", min:0, max:100, step:1}
-duration = 4 #@param {type:"slider", min:1, max:10, step:0.5}
+duration = 1 #@param {type:"slider", min:1, max:10, step:0.5}
 num_samples = 1 #@param {type:"slider", min:1, max:100, step:1}
 
 def generate(fps=30):
@@ -229,7 +228,8 @@ def generate(fps=30):
   print("{} sec to generate {} frames".format(elapsed, num_interps))
 
   # Create gif
-  fname = datetime.now().strftime("%Y%M%d%H%M%S") + "_ani.gif"
+  ext = '.gif' # or '.mp4'
+  fname = os.path.join('renders', datetime.now().strftime("%Y%M%d%H%M%S") + ext)
   write_gif(ims, duration=duration, fname=fname, fps=fps)
   t2 = datetime.now()
   elapsed = (t2 - t1).seconds + 10 ** -6 * (t2 - t1).microseconds
