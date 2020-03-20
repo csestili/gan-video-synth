@@ -3,6 +3,7 @@ From https://colab.research.google.com/drive/1ifHb_9Pj5zcCRuCZ_H6P3DjjBbxvXnMH#s
 """
 
 import io
+import os
 import numpy as np
 from scipy.stats import truncnorm
 import tensorflow as tf
@@ -10,6 +11,8 @@ import tensorflow_hub as hub
 import moviepy.editor as mpy
 from datetime import datetime
 
+# Cache model so it only has to be downloaded once
+os.environ["TFHUB_CACHE_DIR"] = '/tmp/tfhub'
 
 
 # Load model
