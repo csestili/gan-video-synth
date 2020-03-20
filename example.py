@@ -20,10 +20,10 @@ os.environ["TFHUB_CACHE_DIR"] = '/tmp/tfhub'
 # TODO save model after first download and load from there
 module_path = 'https://tfhub.dev/deepmind/biggan-deep-256/1'  # 256x256 BigGAN-deep
 
-tf.reset_default_graph()
+tf.compat.v1.reset_default_graph()
 print('Loading BigGAN module from:', module_path)
 module = hub.Module(module_path)
-inputs = {k: tf.placeholder(v.dtype, v.get_shape().as_list(), k)
+inputs = {k: tf.compat.v1.placeholder(v.dtype, v.get_shape().as_list(), k)
           for k, v in module.get_input_info_dict().items()}
 output = module(inputs)
 
@@ -136,8 +136,8 @@ def imshow(a, format='png', jpeg_fallback=True):
 
 
 # Create a TF session and initialize variables
-initializer = tf.global_variables_initializer()
-sess = tf.Session()
+initializer = tf.compat.v1.global_variables_initializer()
+sess = tf.compat.v1.Session()
 sess.run(initializer)
 
 
