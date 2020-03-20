@@ -64,23 +64,26 @@ class GanVideoSynth(object):
     self.dim_z = self.input_z.shape.as_list()[1]
     self.vocab_size = self.input_y.shape.as_list()[1]
 
-  def sample(self, noise, label, truncation=1., batch_size=8,
+  def sample(self, zs, ys, truncation=1., batch_size=8,
              vocab_size=None):
+    # zs: [num_interps, gan_video_synth.dim_z]
+    # ys: [num_interps, gan_video_synth.vocab_size]
+    # truncation: float
     if vocab_size is None:
         vocab_size = self.vocab_size
-    noise = np.asarray(noise)
-    label = np.asarray(label)
-    num = noise.shape[0]
-    if len(label.shape) == 0:
-      label = np.asarray([label] * num)
-    if label.shape[0] != num:
-      raise ValueError('Got # noise samples ({}) != # label samples ({})'
-                       .format(noise.shape[0], label.shape[0]))
-    label = one_hot_if_needed(label, self.vocab_size)
+    zs = np.asarray(zs)
+    ys = np.asarray(ys)
+    num = zs.shape[0]
+    if len(ys.shape) == 0:
+      ys = np.asarray([ys] * num)
+    if ys.shape[0] != num:
+      raise ValueError('Got # z samples ({}) != # y samples ({})'
+                       .format(zs.shape[0], ys.shape[0]))
+    ys = one_hot_if_needed(ys, self.vocab_size)
     ims = []
     for batch_start in range(0, num, batch_size):
       s = slice(batch_start, min(num, batch_start + batch_size))
-      feed_dict = {self.input_z: noise[s], self.input_y: label[s], self.input_trunc: truncation}
+      feed_dict = {self.input_z: zs[s], self.input_y: ys[s], self.input_trunc: truncation}
       ims.append(self._session.run(self._output, feed_dict=feed_dict))
 
 
