@@ -2,6 +2,7 @@
 From https://colab.research.google.com/drive/1ifHb_9Pj5zcCRuCZ_H6P3DjjBbxvXnMH#scrollTo=stWb21nlcyCm
 """
 
+import argparse
 import io
 import os
 import numpy as np
@@ -32,7 +33,7 @@ class GanVideoSynth(object):
   def _inputs(self):
     if self.__inputs is None:
       self.__inputs = {k: tf.compat.v1.placeholder(v.dtype, v.get_shape().as_list(), k)
-                for k, v in self._module.get_input_info_dict().items()}
+                       for k, v in self._module.get_input_info_dict().items()}
     return self.__inputs
 
   @property
@@ -81,7 +82,7 @@ class GanVideoSynth(object):
     # ys: [num_interps, gan_video_synth.vocab_size]
     # truncation: float
     if vocab_size is None:
-        vocab_size = self.vocab_size
+      vocab_size = self.vocab_size
     zs = np.asarray(zs)
     ys = np.asarray(ys)
     num = zs.shape[0]
@@ -189,7 +190,7 @@ def write_gif(ims, duration=4, fps=30, fname='ani.gif'):
     clip.write_videofile(fname, fps=fps, verbose=False, codec='mpeg4')
 
 
-    
+
 
 
 # My custom generation
@@ -256,10 +257,18 @@ def generate(gan_video_synth, fps=30):
   gan_video_synth._write_gif(ims, out_dir='renders')
 
 
-gan_video_synth = GanVideoSynth()
+def _get_parser():
+  parser = argparse.ArgumentParser()
+  parser.add_argument('--num_samples', default=1, type=int)
+  return parser
 
-# TODO generate multiple samples as a batch, not as a loop
-for _ in range(num_samples):
-  generate(gan_video_synth)
+
+if __name__ == '__main__':
+  args = _get_parser().parse_args()
+  gan_video_synth = GanVideoSynth()
+
+  # TODO generate multiple samples as a batch, not as a loop
+  for _ in range(args.num_samples):
+    generate(gan_video_synth)
 
 
