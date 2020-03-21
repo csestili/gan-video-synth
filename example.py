@@ -274,34 +274,27 @@ def generate_in_tempo(gan_video_synth, bpm, num_beats, classes, fps=30):
 
   # Interpolation settings
   # Axes to change in [0, 128]
-  sin_axes = range(0, 32)
   cos_axes = range(110, 120)
-  sin_double_axes = range(70, 80)
-  cos_double_axes = range(80, 90)
-  sin_quad_axes = range(100, 110)
-  cos_quad_axes = range(32, 64)
-  # Magnitude of change
-  change_mag = 1
-  change_mag_double = 0.8
-  change_mag_quad = 0.7
+  sin_axes = range(0, 10)
+
+  cos_half_axes = range(50, 60)
+  sin_half_axes = range(90, 100)
 
   zs = np.repeat(z0, num_frames, axis=0)
-  ts_1, ts_2, ts_4 = [
-    np.linspace(0, itm * 2 * np.pi, num=num_frames)
-    for itm in [1, 2, 4]
-  ]
-  for axis in sin_axes:
-    zs[:, axis] += np.sin(ts_1) * change_mag
+  # TODO remove duplication
+  ts = np.linspace(0, num_beats * 2 * np.pi, num=num_frames + 1)[:num_frames]
+  ts_half = np.linspace(0, num_beats / 2 * 2 * np.pi, num=num_frames + 1)[:num_frames]
+
   for axis in cos_axes:
-    zs[:, axis] += np.cos(ts_1) * change_mag
-  for axis in sin_double_axes:
-    zs[:, axis] += np.sin(ts_2) * change_mag_double
-  for axis in cos_double_axes:
-    zs[:, axis] += np.cos(ts_2) * change_mag_double
-  for axis in sin_quad_axes:
-    zs[:, axis] += np.sin(ts_4) * change_mag_quad
-  for axis in cos_quad_axes:
-    zs[:, axis] += np.cos(ts_4) * change_mag_quad
+    zs[:, axis] += np.cos(ts)
+  for axis in sin_axes:
+    zs[:, axis] += np.sin(ts)
+  for axis in cos_half_axes:
+    zs[:, axis] += np.cos(ts_half)
+  for axis in sin_half_axes:
+    zs[:, axis] += np.sin(ts_half)
+
+  print()
 
   # Generate images
   ims = gan_video_synth.sample(zs, ys, truncation=truncation)
