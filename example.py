@@ -74,7 +74,7 @@ class GanVideoSynth(object):
     fname = os.path.join(out_dir, datetime.now().strftime("%Y%M%d%H%M%S") + ext)
     write_gif(ims, duration=duration, fname=fname, fps=fps)
 
-  def sample(self, zs, ys, truncation=1., batch_size=8,
+  def sample(self, zs, ys, truncation=1., batch_size=16,
              vocab_size=None):
     # zs: [num_interps, gan_video_synth.dim_z]
     # ys: [num_interps, gan_video_synth.vocab_size]
@@ -209,19 +209,17 @@ def generate(gan_video_synth, fps=30):
   gan_video_synth.write_gif(ims, out_dir='renders')
 
 
-def generate_in_tempo(gan_video_synth, bpm, num_beats, classes, fps=30):
+def generate_in_tempo(gan_video_synth, bpm, num_beats, classes, y_scale, fps=30):
   truncation = 1
   
   duration = 1 / bpm * num_beats * 60
   num_frames = int(duration * fps)
 
   # Indexed label vec
-  y_axes = classes
-  y_magnitude = 0.9
   y = np.zeros((1, gan_video_synth.vocab_size))
-  for axis in y_axes:
+  for axis in classes:
     y[0, axis] = 1
-  y = y / np.linalg.norm(y) * y_magnitude
+  y = y / np.linalg.norm(y) * y_scale
 
   # Expand ys out to full shape
   ys = np.repeat(y, num_frames, axis=0)
@@ -231,29 +229,66 @@ def generate_in_tempo(gan_video_synth, bpm, num_beats, classes, fps=30):
   noise_seed_z = int(datetime.now().strftime('%f'))
   z0 = truncated_z_sample(1, gan_video_synth.dim_z, truncation, noise_seed_z)
 
-  # Interpolation settings
-  # Axes to change in [0, 128]
-  cos_axes = range(110, 120)
-  sin_axes = range(0, 10)
+  axis_sets = [
+    range(110, 115),
+    range(0, 5),
+    range(10, 15),
+    range(20, 25),
+    range(30, 50),
+    range(80, 100),
+    range(30, 60),
+    range(70, 100),
+    range(25, 50),
+    range(45, 70)
+  ]
 
-  cos_half_axes = range(50, 60)
-  sin_half_axes = range(90, 100)
+  magnitudes = [
+    1,
+    1,
+    0.75,
+    0.75,
+    0.55,
+    0.55,
+    0.32,
+    0.32,
+    0.16,
+    0.16
+  ]
+
+  time_multipliers = [
+    1,
+    1,
+    1/2,
+    1/2,
+    1/4,
+    1/4,
+    1/8,
+    1/8,
+    1/16,
+    1/16
+  ]
+
+  funcs = [
+    lambda x: x % (2 * np.pi),
+    lambda x: x % (2 * np.pi),
+    np.cos,
+    np.sin,
+    np.cos,
+    np.sin,
+    np.cos,
+    np.sin,
+    np.cos,
+    np.sin
+  ]
 
   zs = np.repeat(z0, num_frames, axis=0)
-  # TODO remove duplication
-  ts = np.linspace(0, num_beats * 2 * np.pi, num=num_frames + 1)[:num_frames]
-  ts_eighth = np.linspace(0, num_beats / 8 * 2 * np.pi, num=num_frames + 1)[:num_frames]
 
-  for axis in cos_axes:
-    zs[:, axis] += np.cos(ts)
-  for axis in sin_axes:
-    zs[:, axis] += np.sin(ts)
-  for axis in cos_half_axes:
-    zs[:, axis] += np.cos(ts_eighth)
-  for axis in sin_half_axes:
-    zs[:, axis] += np.sin(ts_eighth)
+  for ax_set, mag, mult, func in zip(axis_sets, magnitudes, time_multipliers, funcs):
+    if ax_set is None or mag is None or mult is None:
+      continue
 
-  print()
+    for ax in ax_set:
+      zs[:, ax] += func(np.linspace(0, mult * num_beats * 2 * np.pi, num=num_frames + 1)[:num_frames]) * mag
 
   # Generate images
   ims = gan_video_synth.sample(zs, ys, truncation=truncation)
@@ -266,6 +301,7 @@ def _get_parser():
   parser.add_argument('--bpm', default=None, type=int)
   parser.add_argument('--num-beats', default=None, type=int)
   parser.add_argument('--classes', nargs='+', type=int, default=[309])
+  parser.add_argument('--y-scale', default=0.9, type=float)
   return parser
 
 
@@ -276,7 +312,7 @@ if __name__ == '__main__':
   # TODO generate multiple samples as a batch, not as a loop
   for _ in range(args.num_samples):
     if args.bpm is not None:
-      generate_in_tempo(gan_video_synth, args.bpm, args.num_beats, args.classes)
+      generate_in_tempo(gan_video_synth, args.bpm, args.num_beats, args.classes, args.y_scale)
     else:
       generate(gan_video_synth)
 
