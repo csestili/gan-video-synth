@@ -51,7 +51,7 @@ class GanVideoSynth(object):
       self.__session.run(initializer)
     return self.__session
 
-  def __init__(self, render_fps=30):
+  def __init__(self):
     self.__module = None
     self.__inputs = None
     self.__output = None
@@ -65,16 +65,14 @@ class GanVideoSynth(object):
     self.dim_z = self.input_z.shape.as_list()[1]
     self.vocab_size = self.input_y.shape.as_list()[1]
 
-    self._render_fps = render_fps
-
-  def _write_gif(self, ims, duration, out_dir='renders', ext='.gif'):
+  def write_gif(self, ims, duration, out_dir='renders', fps=20, ext='.gif'):
     """
     :param self:
     :param ext: (str) '.gif' or '.mp4'
     """
     ext = '.gif'  # or '.mp4'
     fname = os.path.join(out_dir, datetime.now().strftime("%Y%M%d%H%M%S") + ext)
-    write_gif(ims, duration=duration, fname=fname, fps=self._render_fps)
+    write_gif(ims, duration=duration, fname=fname, fps=fps)
 
   def sample(self, zs, ys, truncation=1., batch_size=8,
              vocab_size=None):
@@ -135,52 +133,13 @@ def interpolate(A, B, num_interps):
   alphas = np.linspace(0, 1, num_interps)
   return np.array([(1-a)*A + a*B for a in alphas])
 
-def imgrid(imarray, cols=5, pad=1):
-  if imarray.dtype != np.uint8:
-    raise ValueError('imgrid input imarray must be uint8')
-  pad = int(pad)
-  assert pad >= 0
-  cols = int(cols)
-  assert cols >= 1
-  N, H, W, C = imarray.shape
-  rows = N // cols + int(N % cols != 0)
-  batch_pad = rows * cols - N
-  assert batch_pad >= 0
-  post_pad = [batch_pad, pad, pad, 0]
-  pad_arg = [[0, p] for p in post_pad]
-  imarray = np.pad(imarray, pad_arg, 'constant', constant_values=255)
-  H += pad
-  W += pad
-  grid = (imarray
-          .reshape(rows, cols, H, W, C)
-          .transpose(0, 2, 1, 3, 4)
-          .reshape(rows*H, cols*W, C))
-  if pad:
-    grid = grid[:-pad, :-pad]
-  return grid
-
-def imshow(a, format='png', jpeg_fallback=True):
-  a = np.asarray(a, dtype=np.uint8)
-  data = io.BytesIO()
-  PIL.Image.fromarray(a).save(data, format)
-  im_data = data.getvalue()
-  try:
-    disp = IPython.display.display(IPython.display.Image(im_data))
-  except IOError:
-    if jpeg_fallback and format != 'jpeg':
-      print(('Warning: image was too large to display in format "{}"; '
-             'trying jpeg instead.').format(format))
-      return imshow(a, format='jpeg')
-    else:
-      raise
-  return disp
-
 def write_gif(ims, duration=4, fps=30, fname='ani.gif'):
+  num_frames = ims.shape[0]
 
   def make_frame(t):
     # Given time in seconds, produce an array
 
-    frame_num = int(t / duration * ims.shape[0])
+    frame_num = int(t / duration * num_frames)
     return ims[frame_num]
 
   clip = mpy.VideoClip(make_frame, duration=duration)
@@ -247,7 +206,7 @@ def generate(gan_video_synth, fps=30):
 
   # Generate images
   ims = gan_video_synth.sample(zs, ys, truncation=truncation)
-  gan_video_synth._write_gif(ims, out_dir='renders')
+  gan_video_synth.write_gif(ims, out_dir='renders')
 
 
 def generate_in_tempo(gan_video_synth, bpm, num_beats, classes, fps=30):
@@ -283,22 +242,22 @@ def generate_in_tempo(gan_video_synth, bpm, num_beats, classes, fps=30):
   zs = np.repeat(z0, num_frames, axis=0)
   # TODO remove duplication
   ts = np.linspace(0, num_beats * 2 * np.pi, num=num_frames + 1)[:num_frames]
-  ts_half = np.linspace(0, num_beats / 2 * 2 * np.pi, num=num_frames + 1)[:num_frames]
+  ts_eighth = np.linspace(0, num_beats / 8 * 2 * np.pi, num=num_frames + 1)[:num_frames]
 
   for axis in cos_axes:
     zs[:, axis] += np.cos(ts)
   for axis in sin_axes:
     zs[:, axis] += np.sin(ts)
   for axis in cos_half_axes:
-    zs[:, axis] += np.cos(ts_half)
+    zs[:, axis] += np.cos(ts_eighth)
   for axis in sin_half_axes:
-    zs[:, axis] += np.sin(ts_half)
+    zs[:, axis] += np.sin(ts_eighth)
 
   print()
 
   # Generate images
   ims = gan_video_synth.sample(zs, ys, truncation=truncation)
-  gan_video_synth._write_gif(ims, duration, out_dir='renders')
+  gan_video_synth.write_gif(ims, duration, out_dir='renders', ext='.mp4')
 
 
 def _get_parser():
