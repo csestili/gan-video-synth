@@ -16,6 +16,9 @@ from datetime import datetime
 os.environ["TFHUB_CACHE_DIR"] = '/tmp/tfhub'
 
 
+TAU = 2 * np.pi
+
+
 class GanVideoSynth(object):
 
   @property
@@ -71,7 +74,7 @@ class GanVideoSynth(object):
     :param ext: (str) '.gif' or '.mp4'
     """
     ext = '.gif'  # or '.mp4'
-    fname = os.path.join(out_dir, datetime.now().strftime("%Y%M%d%H%M%S") + ext)
+    fname = os.path.join(out_dir, datetime.now().strftime("%Y%m%d%H%M%S") + ext)
     write_gif(ims, duration=duration, fname=fname, fps=fps)
 
   def sample(self, zs, ys, truncation=1., batch_size=16,
@@ -188,7 +191,7 @@ def generate(gan_video_synth, fps=30):
 
   zs = np.repeat(z0, num_interps, axis=0)
   ts_1, ts_2, ts_4 = [
-    np.linspace(0, itm * 2 * np.pi, num=num_interps)
+    np.linspace(0, itm * TAU, num=num_interps)
     for itm in [1, 2, 4]
   ]
   for axis in sin_axes:
@@ -207,6 +210,10 @@ def generate(gan_video_synth, fps=30):
   # Generate images
   ims = gan_video_synth.sample(zs, ys, truncation=truncation)
   gan_video_synth.write_gif(ims, out_dir='renders')
+
+
+def ramp(x, phase=0):
+    return (x + phase) % TAU
 
 
 def generate_in_tempo(gan_video_synth, bpm, num_beats, classes, y_scale, fps=30):
@@ -229,30 +236,31 @@ def generate_in_tempo(gan_video_synth, bpm, num_beats, classes, y_scale, fps=30)
   noise_seed_z = int(datetime.now().strftime('%f'))
   z0 = truncated_z_sample(1, gan_video_synth.dim_z, truncation, noise_seed_z)
 
+  # in [0, 128)
   axis_sets = [
     range(110, 115),
     range(0, 5),
-    range(10, 15),
-    range(20, 25),
+    range(10, 20),
+    range(20, 30),
     range(30, 50),
     range(80, 100),
-    range(30, 60),
+    range(30, 40),
     range(70, 100),
-    range(25, 50),
-    range(45, 70)
+    range(25, 30),
+    range(45, 50)
   ]
 
   magnitudes = [
-    1,
-    1,
-    0.75,
-    0.75,
-    0.55,
-    0.55,
-    0.32,
-    0.32,
-    0.16,
-    0.16
+    0.4,
+    0.3,
+    0.8,
+    0.6,
+    0.5,
+    0.5,
+    0.8,
+    0.6,
+    0.8,
+    0.8
   ]
 
   time_multipliers = [
@@ -269,8 +277,8 @@ def generate_in_tempo(gan_video_synth, bpm, num_beats, classes, y_scale, fps=30)
   ]
 
   funcs = [
-    lambda x: x % (2 * np.pi),
-    lambda x: x % (2 * np.pi),
+    ramp,
+    np.sin,
     np.cos,
     np.sin,
     np.cos,
@@ -288,7 +296,7 @@ def generate_in_tempo(gan_video_synth, bpm, num_beats, classes, y_scale, fps=30)
       continue
 
     for ax in ax_set:
-      zs[:, ax] += func(np.linspace(0, mult * num_beats * 2 * np.pi, num=num_frames + 1)[:num_frames]) * mag
+      zs[:, ax] += func(np.linspace(0, mult * num_beats * TAU, num=num_frames + 1)[:num_frames]) * mag
 
   # Generate images
   ims = gan_video_synth.sample(zs, ys, truncation=truncation)
