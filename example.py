@@ -50,7 +50,7 @@ class GanVideoSynth(object):
       self.__session.run(initializer)
     return self.__session
 
-  def __init__(self):
+  def __init__(self, render_fps=30):
     self.__module = None
     self.__inputs = None
     self.__output = None
@@ -63,6 +63,17 @@ class GanVideoSynth(object):
 
     self.dim_z = self.input_z.shape.as_list()[1]
     self.vocab_size = self.input_y.shape.as_list()[1]
+
+    self._render_fps = render_fps
+
+  def _write_gif(self, ims, out_dir='renders', ext='.gif'):
+    """
+    :param self:
+    :param ext: (str) '.gif' or '.mp4'
+    """
+    ext = '.gif'  # or '.mp4'
+    fname = os.path.join(out_dir, datetime.now().strftime("%Y%M%d%H%M%S") + ext)
+    write_gif(ims, duration=duration, fname=fname, fps=self._render_fps)
 
   def sample(self, zs, ys, truncation=1., batch_size=8,
              vocab_size=None):
@@ -186,17 +197,12 @@ def write_gif(ims, duration=4, fps=30, fname='ani.gif'):
 #@title Cycles { display-mode: "form", run: "auto" }
 
 truncation = 1 #@param {type:"slider", min:0.02, max:1, step:0.02}
-#noise_seed_z = 57 #@param {type:"slider", min:0, max:100, step:1}
-#noise_seed_y = 0 #@param {type:"slider", min:0, max:100, step:1}
 duration = 1 #@param {type:"slider", min:1, max:10, step:0.5}
 num_samples = 1 #@param {type:"slider", min:1, max:100, step:1}
 
 def generate(gan_video_synth, fps=30):
 
   num_interps = duration * fps
-
-  # # Random label vec
-  # y = truncated_z_sample(1, vocab_size, truncation=truncation, seed=noise_seed_y)
 
   # Indexed label vec
   y_axes = [309]
@@ -210,6 +216,7 @@ def generate(gan_video_synth, fps=30):
   ys = np.repeat(y, num_interps, axis=0)
 
   # Random z vec
+  # Here the seed itself is a function of the current microsecond
   noise_seed_z = int(datetime.now().strftime('%f'))
   z0 = truncated_z_sample(1, gan_video_synth.dim_z, truncation, noise_seed_z)
 
@@ -245,19 +252,9 @@ def generate(gan_video_synth, fps=30):
     zs[:, axis] += np.cos(ts_4) * change_mag_quad
 
   # Generate images
-  t0 = datetime.now()
   ims = gan_video_synth.sample(zs, ys, truncation=truncation)
-  t1 = datetime.now()
-  elapsed = (t1 - t0).seconds + 10 ** -6 * (t1 - t0).microseconds
-  print("{} sec to generate {} frames".format(elapsed, num_interps))
+  gan_video_synth._write_gif(ims, out_dir='renders')
 
-  # Create gif
-  ext = '.gif' # or '.mp4'
-  fname = os.path.join('renders', datetime.now().strftime("%Y%M%d%H%M%S") + ext)
-  write_gif(ims, duration=duration, fname=fname, fps=fps)
-  t2 = datetime.now()
-  elapsed = (t2 - t1).seconds + 10 ** -6 * (t2 - t1).microseconds
-  print("{} sec to write gif".format(elapsed))
 
 gan_video_synth = GanVideoSynth()
 
