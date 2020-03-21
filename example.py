@@ -67,7 +67,7 @@ class GanVideoSynth(object):
 
     self._render_fps = render_fps
 
-  def _write_gif(self, ims, out_dir='renders', ext='.gif'):
+  def _write_gif(self, ims, duration, out_dir='renders', ext='.gif'):
     """
     :param self:
     :param ext: (str) '.gif' or '.mp4'
@@ -190,18 +190,11 @@ def write_gif(ims, duration=4, fps=30, fname='ani.gif'):
     clip.write_videofile(fname, fps=fps, verbose=False, codec='mpeg4')
 
 
-
-
-
-# My custom generation
-
-#@title Cycles { display-mode: "form", run: "auto" }
-
-truncation = 1 #@param {type:"slider", min:0.02, max:1, step:0.02}
-duration = 1 #@param {type:"slider", min:1, max:10, step:0.5}
-num_samples = 1 #@param {type:"slider", min:1, max:100, step:1}
+# Generation functions
 
 def generate(gan_video_synth, fps=30):
+  truncation = 1
+  duration = 1
 
   num_interps = duration * fps
 
@@ -257,9 +250,70 @@ def generate(gan_video_synth, fps=30):
   gan_video_synth._write_gif(ims, out_dir='renders')
 
 
+def generate_in_tempo(gan_video_synth, bpm, num_beats, classes, fps=30):
+  truncation = 1
+  
+  duration = 1 / bpm * num_beats * 60
+  num_frames = int(duration * fps)
+
+  # Indexed label vec
+  y_axes = classes
+  y_magnitude = 0.9
+  y = np.zeros((1, gan_video_synth.vocab_size))
+  for axis in y_axes:
+    y[0, axis] = 1
+  y = y / np.linalg.norm(y) * y_magnitude
+
+  # Expand ys out to full shape
+  ys = np.repeat(y, num_frames, axis=0)
+
+  # Random z vec
+  # Here the seed itself is a function of the current microsecond
+  noise_seed_z = int(datetime.now().strftime('%f'))
+  z0 = truncated_z_sample(1, gan_video_synth.dim_z, truncation, noise_seed_z)
+
+  # Interpolation settings
+  # Axes to change in [0, 128]
+  sin_axes = range(0, 32)
+  cos_axes = range(110, 120)
+  sin_double_axes = range(70, 80)
+  cos_double_axes = range(80, 90)
+  sin_quad_axes = range(100, 110)
+  cos_quad_axes = range(32, 64)
+  # Magnitude of change
+  change_mag = 1
+  change_mag_double = 0.8
+  change_mag_quad = 0.7
+
+  zs = np.repeat(z0, num_frames, axis=0)
+  ts_1, ts_2, ts_4 = [
+    np.linspace(0, itm * 2 * np.pi, num=num_frames)
+    for itm in [1, 2, 4]
+  ]
+  for axis in sin_axes:
+    zs[:, axis] += np.sin(ts_1) * change_mag
+  for axis in cos_axes:
+    zs[:, axis] += np.cos(ts_1) * change_mag
+  for axis in sin_double_axes:
+    zs[:, axis] += np.sin(ts_2) * change_mag_double
+  for axis in cos_double_axes:
+    zs[:, axis] += np.cos(ts_2) * change_mag_double
+  for axis in sin_quad_axes:
+    zs[:, axis] += np.sin(ts_4) * change_mag_quad
+  for axis in cos_quad_axes:
+    zs[:, axis] += np.cos(ts_4) * change_mag_quad
+
+  # Generate images
+  ims = gan_video_synth.sample(zs, ys, truncation=truncation)
+  gan_video_synth._write_gif(ims, duration, out_dir='renders')
+
+
 def _get_parser():
   parser = argparse.ArgumentParser()
-  parser.add_argument('--num_samples', default=1, type=int)
+  parser.add_argument('--num-samples', default=1, type=int)
+  parser.add_argument('--bpm', default=None, type=int)
+  parser.add_argument('--num-beats', default=None, type=int)
+  parser.add_argument('--classes', nargs='+', type=int, default=[309])
   return parser
 
 
@@ -269,6 +323,9 @@ if __name__ == '__main__':
 
   # TODO generate multiple samples as a batch, not as a loop
   for _ in range(args.num_samples):
-    generate(gan_video_synth)
+    if args.bpm is not None:
+      generate_in_tempo(gan_video_synth, args.bpm, args.num_beats, args.classes)
+    else:
+      generate(gan_video_synth)
 
 
