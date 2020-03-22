@@ -73,7 +73,6 @@ class GanVideoSynth(object):
     :param self:
     :param ext: (str) '.gif' or '.mp4'
     """
-    ext = '.gif'  # or '.mp4'
     fname = os.path.join(out_dir, datetime.now().strftime("%Y%m%d%H%M%S") + ext)
     write_gif(ims, duration=duration, fname=fname, fps=fps)
 
@@ -216,16 +215,19 @@ def ramp(x, phase=0):
     return (x + phase) % TAU
 
 
-def generate_in_tempo(gan_video_synth, bpm, num_beats, classes, y_scale, fps=30):
-  truncation = 1
+def generate_in_tempo(gan_video_synth, bpm, num_beats, classes, y_scale, truncation, random_label, fps=30):
   
   duration = 1 / bpm * num_beats * 60
   num_frames = int(duration * fps)
 
-  # Indexed label vec
-  y = np.zeros((1, gan_video_synth.vocab_size))
-  for axis in classes:
-    y[0, axis] = 1
+  if random_label:
+    # Random label vec
+    y = truncated_z_sample(1, gan_video_synth.vocab_size, truncation, int(datetime.now().strftime('%f')))
+  else:
+    # Indexed label vec
+    y = np.zeros((1, gan_video_synth.vocab_size))
+    for axis in classes:
+      y[0, axis] = 1
   y = y / np.linalg.norm(y) * y_scale
 
   # Expand ys out to full shape
@@ -236,31 +238,31 @@ def generate_in_tempo(gan_video_synth, bpm, num_beats, classes, y_scale, fps=30)
   noise_seed_z = int(datetime.now().strftime('%f'))
   z0 = truncated_z_sample(1, gan_video_synth.dim_z, truncation, noise_seed_z)
 
-  # in [0, 128)
+  # Dimension sets to vary rhythmically; in [0, 128)
   axis_sets = [
-    range(110, 115),
+    range(30, 40),
     range(0, 5),
     range(10, 20),
-    range(20, 30),
+    range(20, 40),
     range(30, 50),
     range(80, 100),
-    range(30, 40),
+    range(110, 115),
     range(70, 100),
     range(25, 30),
-    range(45, 50)
+    range(45, 70)
   ]
 
   magnitudes = [
     0.4,
-    0.3,
+    0.05,
+    0.8,
+    0.8,
+    0.8,
+    0.8,
+    0.8,
     0.8,
     0.6,
-    0.5,
-    0.5,
-    0.8,
-    0.6,
-    0.8,
-    0.8
+    0.6
   ]
 
   time_multipliers = [
@@ -278,8 +280,8 @@ def generate_in_tempo(gan_video_synth, bpm, num_beats, classes, y_scale, fps=30)
 
   funcs = [
     ramp,
-    np.sin,
-    np.cos,
+    lambda x: ramp(x, phase=np.pi),
+    ramp,
     np.sin,
     np.cos,
     np.sin,
@@ -300,7 +302,7 @@ def generate_in_tempo(gan_video_synth, bpm, num_beats, classes, y_scale, fps=30)
 
   # Generate images
   ims = gan_video_synth.sample(zs, ys, truncation=truncation)
-  gan_video_synth.write_gif(ims, duration, out_dir='renders', ext='.mp4')
+  gan_video_synth.write_gif(ims, duration, out_dir='renders', ext='.gif')
 
 
 def _get_parser():
@@ -310,6 +312,8 @@ def _get_parser():
   parser.add_argument('--num-beats', default=None, type=int)
   parser.add_argument('--classes', nargs='+', type=int, default=[309])
   parser.add_argument('--y-scale', default=0.9, type=float)
+  parser.add_argument('--truncation', default=1, type=float)
+  parser.add_argument('--random-label', action='store_true')
   return parser
 
 
@@ -320,7 +324,8 @@ if __name__ == '__main__':
   # TODO generate multiple samples as a batch, not as a loop
   for _ in range(args.num_samples):
     if args.bpm is not None:
-      generate_in_tempo(gan_video_synth, args.bpm, args.num_beats, args.classes, args.y_scale)
+      generate_in_tempo(gan_video_synth, args.bpm, args.num_beats, args.classes, args.y_scale, args.truncation,
+                        args.random_label)
     else:
       generate(gan_video_synth)
 
