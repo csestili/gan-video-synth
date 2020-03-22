@@ -2,6 +2,7 @@
 From https://colab.research.google.com/drive/1ifHb_9Pj5zcCRuCZ_H6P3DjjBbxvXnMH#scrollTo=stWb21nlcyCm
 """
 
+import argparse
 import io
 import os
 import numpy as np
@@ -13,6 +14,9 @@ from datetime import datetime
 
 # Cache model so it only has to be downloaded once
 os.environ["TFHUB_CACHE_DIR"] = '/tmp/tfhub'
+
+
+TAU = 2 * np.pi
 
 
 class GanVideoSynth(object):
@@ -32,7 +36,7 @@ class GanVideoSynth(object):
   def _inputs(self):
     if self.__inputs is None:
       self.__inputs = {k: tf.compat.v1.placeholder(v.dtype, v.get_shape().as_list(), k)
-                for k, v in self._module.get_input_info_dict().items()}
+                       for k, v in self._module.get_input_info_dict().items()}
     return self.__inputs
 
   @property
@@ -50,7 +54,7 @@ class GanVideoSynth(object):
       self.__session.run(initializer)
     return self.__session
 
-  def __init__(self, render_fps=30):
+  def __init__(self):
     self.__module = None
     self.__inputs = None
     self.__output = None
@@ -64,24 +68,21 @@ class GanVideoSynth(object):
     self.dim_z = self.input_z.shape.as_list()[1]
     self.vocab_size = self.input_y.shape.as_list()[1]
 
-    self._render_fps = render_fps
-
-  def _write_gif(self, ims, out_dir='renders', ext='.gif'):
+  def write_gif(self, ims, duration, out_dir='renders', fps=20, ext='.gif'):
     """
     :param self:
     :param ext: (str) '.gif' or '.mp4'
     """
-    ext = '.gif'  # or '.mp4'
-    fname = os.path.join(out_dir, datetime.now().strftime("%Y%M%d%H%M%S") + ext)
-    write_gif(ims, duration=duration, fname=fname, fps=self._render_fps)
+    fname = os.path.join(out_dir, datetime.now().strftime("%Y%m%d%H%M%S") + ext)
+    write_gif(ims, duration=duration, fname=fname, fps=fps)
 
-  def sample(self, zs, ys, truncation=1., batch_size=8,
+  def sample(self, zs, ys, truncation=1., batch_size=16,
              vocab_size=None):
     # zs: [num_interps, gan_video_synth.dim_z]
     # ys: [num_interps, gan_video_synth.vocab_size]
     # truncation: float
     if vocab_size is None:
-        vocab_size = self.vocab_size
+      vocab_size = self.vocab_size
     zs = np.asarray(zs)
     ys = np.asarray(ys)
     num = zs.shape[0]
@@ -134,52 +135,13 @@ def interpolate(A, B, num_interps):
   alphas = np.linspace(0, 1, num_interps)
   return np.array([(1-a)*A + a*B for a in alphas])
 
-def imgrid(imarray, cols=5, pad=1):
-  if imarray.dtype != np.uint8:
-    raise ValueError('imgrid input imarray must be uint8')
-  pad = int(pad)
-  assert pad >= 0
-  cols = int(cols)
-  assert cols >= 1
-  N, H, W, C = imarray.shape
-  rows = N // cols + int(N % cols != 0)
-  batch_pad = rows * cols - N
-  assert batch_pad >= 0
-  post_pad = [batch_pad, pad, pad, 0]
-  pad_arg = [[0, p] for p in post_pad]
-  imarray = np.pad(imarray, pad_arg, 'constant', constant_values=255)
-  H += pad
-  W += pad
-  grid = (imarray
-          .reshape(rows, cols, H, W, C)
-          .transpose(0, 2, 1, 3, 4)
-          .reshape(rows*H, cols*W, C))
-  if pad:
-    grid = grid[:-pad, :-pad]
-  return grid
-
-def imshow(a, format='png', jpeg_fallback=True):
-  a = np.asarray(a, dtype=np.uint8)
-  data = io.BytesIO()
-  PIL.Image.fromarray(a).save(data, format)
-  im_data = data.getvalue()
-  try:
-    disp = IPython.display.display(IPython.display.Image(im_data))
-  except IOError:
-    if jpeg_fallback and format != 'jpeg':
-      print(('Warning: image was too large to display in format "{}"; '
-             'trying jpeg instead.').format(format))
-      return imshow(a, format='jpeg')
-    else:
-      raise
-  return disp
-
 def write_gif(ims, duration=4, fps=30, fname='ani.gif'):
+  num_frames = ims.shape[0]
 
   def make_frame(t):
     # Given time in seconds, produce an array
 
-    frame_num = int(t / duration * ims.shape[0])
+    frame_num = int(t / duration * num_frames)
     return ims[frame_num]
 
   clip = mpy.VideoClip(make_frame, duration=duration)
@@ -189,18 +151,11 @@ def write_gif(ims, duration=4, fps=30, fname='ani.gif'):
     clip.write_videofile(fname, fps=fps, verbose=False, codec='mpeg4')
 
 
-    
-
-
-# My custom generation
-
-#@title Cycles { display-mode: "form", run: "auto" }
-
-truncation = 1 #@param {type:"slider", min:0.02, max:1, step:0.02}
-duration = 1 #@param {type:"slider", min:1, max:10, step:0.5}
-num_samples = 1 #@param {type:"slider", min:1, max:100, step:1}
+# Generation functions
 
 def generate(gan_video_synth, fps=30):
+  truncation = 1
+  duration = 1
 
   num_interps = duration * fps
 
@@ -235,7 +190,7 @@ def generate(gan_video_synth, fps=30):
 
   zs = np.repeat(z0, num_interps, axis=0)
   ts_1, ts_2, ts_4 = [
-    np.linspace(0, itm * 2 * np.pi, num=num_interps)
+    np.linspace(0, itm * TAU, num=num_interps)
     for itm in [1, 2, 4]
   ]
   for axis in sin_axes:
@@ -253,13 +208,125 @@ def generate(gan_video_synth, fps=30):
 
   # Generate images
   ims = gan_video_synth.sample(zs, ys, truncation=truncation)
-  gan_video_synth._write_gif(ims, out_dir='renders')
+  gan_video_synth.write_gif(ims, out_dir='renders')
 
 
-gan_video_synth = GanVideoSynth()
+def ramp(x, phase=0):
+    return (x + phase) % TAU
 
-# TODO generate multiple samples as a batch, not as a loop
-for _ in range(num_samples):
-  generate(gan_video_synth)
+
+def generate_in_tempo(gan_video_synth, bpm, num_beats, classes, y_scale, truncation, random_label, fps=30):
+  
+  duration = 1 / bpm * num_beats * 60
+  num_frames = int(duration * fps)
+
+  if random_label:
+    # Random label vec
+    y = truncated_z_sample(1, gan_video_synth.vocab_size, truncation, int(datetime.now().strftime('%f')))
+  else:
+    # Indexed label vec
+    y = np.zeros((1, gan_video_synth.vocab_size))
+    for axis in classes:
+      y[0, axis] = 1
+  y = y / np.linalg.norm(y) * y_scale
+
+  # Expand ys out to full shape
+  ys = np.repeat(y, num_frames, axis=0)
+
+  # Random z vec
+  # Here the seed itself is a function of the current microsecond
+  noise_seed_z = int(datetime.now().strftime('%f'))
+  z0 = truncated_z_sample(1, gan_video_synth.dim_z, truncation, noise_seed_z)
+
+  # Dimension sets to vary rhythmically; in [0, 128)
+  axis_sets = [
+    range(30, 40),
+    range(0, 5),
+    range(10, 20),
+    range(20, 40),
+    range(30, 50),
+    range(80, 100),
+    range(110, 115),
+    range(70, 100),
+    range(25, 30),
+    range(45, 70)
+  ]
+
+  magnitudes = [
+    0.4,
+    0.05,
+    0.8,
+    0.8,
+    0.8,
+    0.8,
+    0.8,
+    0.8,
+    0.6,
+    0.6
+  ]
+
+  time_multipliers = [
+    1,
+    1,
+    1/2,
+    1/2,
+    1/4,
+    1/4,
+    1/8,
+    1/8,
+    1/16,
+    1/16
+  ]
+
+  funcs = [
+    ramp,
+    lambda x: ramp(x, phase=np.pi),
+    ramp,
+    np.sin,
+    np.cos,
+    np.sin,
+    np.cos,
+    np.sin,
+    np.cos,
+    np.sin
+  ]
+
+  zs = np.repeat(z0, num_frames, axis=0)
+
+  for ax_set, mag, mult, func in zip(axis_sets, magnitudes, time_multipliers, funcs):
+    if ax_set is None or mag is None or mult is None:
+      continue
+
+    for ax in ax_set:
+      zs[:, ax] += func(np.linspace(0, mult * num_beats * TAU, num=num_frames + 1)[:num_frames]) * mag
+
+  # Generate images
+  ims = gan_video_synth.sample(zs, ys, truncation=truncation)
+  gan_video_synth.write_gif(ims, duration, out_dir='renders', ext='.gif')
+
+
+def _get_parser():
+  parser = argparse.ArgumentParser()
+  parser.add_argument('--num-samples', default=1, type=int)
+  parser.add_argument('--bpm', default=None, type=int)
+  parser.add_argument('--num-beats', default=None, type=int)
+  parser.add_argument('--classes', nargs='+', type=int, default=[309])
+  parser.add_argument('--y-scale', default=0.9, type=float)
+  parser.add_argument('--truncation', default=1, type=float)
+  parser.add_argument('--random-label', action='store_true')
+  return parser
+
+
+if __name__ == '__main__':
+  args = _get_parser().parse_args()
+  gan_video_synth = GanVideoSynth()
+
+  # TODO generate multiple samples as a batch, not as a loop
+  for _ in range(args.num_samples):
+    if args.bpm is not None:
+      generate_in_tempo(gan_video_synth, args.bpm, args.num_beats, args.classes, args.y_scale, args.truncation,
+                        args.random_label)
+    else:
+      generate(gan_video_synth)
 
 
