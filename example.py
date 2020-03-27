@@ -215,7 +215,9 @@ def ramp(x, phase=0):
     return (x + phase) % TAU
 
 
-def generate_in_tempo(gan_video_synth, bpm, num_beats, classes, y_scale, truncation, random_label, fps=30):
+def generate_in_tempo(gan_video_synth, bpm=120, num_beats=16, classes=[309], y_scale=1, truncation=1,
+                      random_label=False, ext='.gif', fps=30, axis_sets=None, magnitudes=None, periods=None,
+                      funcs=None):
   
   duration = 1 / bpm * num_beats * 60
   num_frames = int(duration * fps)
@@ -239,70 +241,74 @@ def generate_in_tempo(gan_video_synth, bpm, num_beats, classes, y_scale, truncat
   z0 = truncated_z_sample(1, gan_video_synth.dim_z, truncation, noise_seed_z)
 
   # Dimension sets to vary rhythmically; in [0, 128)
-  axis_sets = [
-    range(30, 40),
-    range(0, 5),
-    range(10, 20),
-    range(20, 40),
-    range(30, 50),
-    range(80, 100),
-    range(110, 115),
-    range(70, 100),
-    range(25, 30),
-    range(45, 70)
-  ]
+  if axis_sets is None:
+    axis_sets = [
+      range(30, 40),
+      range(0, 5),
+      range(10, 20),
+      range(20, 40),
+      range(30, 50),
+      range(80, 100),
+      range(110, 115),
+      range(70, 100),
+      range(25, 30),
+      range(45, 70)
+    ]
 
-  magnitudes = [
-    0.4,
-    0.05,
-    0.8,
-    0.8,
-    0.8,
-    0.8,
-    0.8,
-    0.8,
-    0.6,
-    0.6
-  ]
+  if magnitudes is None:
+    magnitudes = [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ]
 
-  time_multipliers = [
-    1,
-    1,
-    1/2,
-    1/2,
-    1/4,
-    1/4,
-    1/8,
-    1/8,
-    1/16,
-    1/16
-  ]
+  if periods is None:
+    periods = [
+      1,
+      1,
+      2,
+      2,
+      4,
+      4,
+      8,
+      8,
+      16,
+      16
+    ]
 
-  funcs = [
-    ramp,
-    lambda x: ramp(x, phase=np.pi),
-    ramp,
-    np.sin,
-    np.cos,
-    np.sin,
-    np.cos,
-    np.sin,
-    np.cos,
-    np.sin
-  ]
+  if funcs is None:
+    funcs = [
+      ramp,
+      lambda x: ramp(x, phase=np.pi),
+      ramp,
+      np.sin,
+      np.cos,
+      np.sin,
+      np.cos,
+      np.sin,
+      np.cos,
+      np.sin
+    ]
 
   zs = np.repeat(z0, num_frames, axis=0)
 
-  for ax_set, mag, mult, func in zip(axis_sets, magnitudes, time_multipliers, funcs):
-    if ax_set is None or mag is None or mult is None:
+  for ax_set, mag, period, func in zip(axis_sets, magnitudes, periods, funcs):
+    if ax_set is None or mag is None or period is None:
       continue
 
     for ax in ax_set:
-      zs[:, ax] += func(np.linspace(0, mult * num_beats * TAU, num=num_frames + 1)[:num_frames]) * mag
+      zs[:, ax] += func(np.linspace(0, 1.0 / period * num_beats * TAU, num=num_frames + 1)[:num_frames]) * mag
 
   # Generate images
   ims = gan_video_synth.sample(zs, ys, truncation=truncation)
-  gan_video_synth.write_gif(ims, duration, out_dir='renders', ext='.gif')
+  gan_video_synth.write_gif(ims, duration, out_dir='renders', ext=ext)
 
 
 def _get_parser():
@@ -314,6 +320,7 @@ def _get_parser():
   parser.add_argument('--y-scale', default=0.9, type=float)
   parser.add_argument('--truncation', default=1, type=float)
   parser.add_argument('--random-label', action='store_true')
+  parser.add_argument('--ext', default='.gif')
   return parser
 
 
@@ -325,7 +332,7 @@ if __name__ == '__main__':
   for _ in range(args.num_samples):
     if args.bpm is not None:
       generate_in_tempo(gan_video_synth, args.bpm, args.num_beats, args.classes, args.y_scale, args.truncation,
-                        args.random_label)
+                        args.random_label, ext=args.ext)
     else:
       generate(gan_video_synth)
 
