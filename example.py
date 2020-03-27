@@ -299,12 +299,12 @@ def generate_in_tempo(gan_video_synth, bpm=120, num_beats=16, classes=[309], y_s
 
   zs = np.repeat(z0, num_frames, axis=0)
 
-  for ax_set, mag, mult, func in zip(axis_sets, magnitudes, periods, funcs):
-    if ax_set is None or mag is None or mult is None:
+  for ax_set, mag, period, func in zip(axis_sets, magnitudes, periods, funcs):
+    if ax_set is None or mag is None or period is None:
       continue
 
     for ax in ax_set:
-      zs[:, ax] += func(np.linspace(0, 1.0 / mult * num_beats * TAU, num=num_frames + 1)[:num_frames]) * mag
+      zs[:, ax] += func(np.linspace(0, 1.0 / period * num_beats * TAU, num=num_frames + 1)[:num_frames]) * mag
 
   # Generate images
   ims = gan_video_synth.sample(zs, ys, truncation=truncation)
