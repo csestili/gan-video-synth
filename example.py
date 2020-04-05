@@ -208,7 +208,7 @@ def generate(gan_video_synth, fps=30):
 
   # Generate images
   ims = gan_video_synth.sample(zs, ys, truncation=truncation)
-  gan_video_synth.write_gif(ims, out_dir='renders')
+  gan_video_synth.write_gif(ims, duration, out_dir='renders')
 
 
 def ramp(x, phase=0):
@@ -243,16 +243,16 @@ def generate_in_tempo(gan_video_synth, bpm=120, num_beats=16, classes=[309], y_s
   # Dimension sets to vary rhythmically; in [0, 128)
   if axis_sets is None:
     axis_sets = [
-      range(30, 40),
-      range(0, 5),
-      range(10, 20),
-      range(20, 40),
-      range(30, 50),
-      range(80, 100),
-      range(110, 115),
-      range(70, 100),
-      range(25, 30),
-      range(45, 70)
+      range(0, 8),
+      range(8, 16),
+      range(16, 24),
+      range(24, 32),
+      range(32, 40),
+      range(40, 48),
+      range(48, 56),
+      range(56, 64),
+      range(64, 72),
+      range(72, 80)
     ]
 
   if magnitudes is None:
@@ -307,7 +307,7 @@ def generate_in_tempo(gan_video_synth, bpm=120, num_beats=16, classes=[309], y_s
       zs[:, ax] += func(np.linspace(0, 1.0 / period * num_beats * TAU, num=num_frames + 1)[:num_frames]) * mag
 
   # Generate images
-  ims = gan_video_synth.sample(zs, ys, truncation=truncation)
+  ims = gan_video_synth.sample(zs, ys, truncation=truncation, batch_size=8)
   gan_video_synth.write_gif(ims, duration, out_dir='renders', ext=ext)
 
 
