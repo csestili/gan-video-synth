@@ -217,7 +217,7 @@ def ramp(x, phase=0):
 
 def generate_in_tempo(gan_video_synth, bpm=120, num_beats=16, classes=[309], y_scale=1, truncation=1,
                       random_label=False, ext='.gif', fps=30, axis_sets=None, magnitudes=None, periods=None,
-                      funcs=None):
+                      funcs=None, quantize_label=False):
   
   duration = 1 / bpm * num_beats * 60
   num_frames = int(duration * fps)
@@ -230,7 +230,12 @@ def generate_in_tempo(gan_video_synth, bpm=120, num_beats=16, classes=[309], y_s
     y = np.zeros((1, gan_video_synth.vocab_size))
     for axis in classes:
       y[0, axis] = 1
+
   y = y / np.linalg.norm(y) * y_scale
+  
+  # Quantize y values to 0 and 1
+  if quantize_label:
+    y = (abs(y) > 0.5).astype(int)
 
   # Expand ys out to full shape
   ys = np.repeat(y, num_frames, axis=0)
@@ -321,6 +326,7 @@ def _get_parser():
   parser.add_argument('--truncation', default=1, type=float)
   parser.add_argument('--random-label', action='store_true')
   parser.add_argument('--ext', default='.gif')
+  parser.add_argument('--quantize-label', action='store_true')
   return parser
 
 
@@ -332,7 +338,7 @@ if __name__ == '__main__':
   for _ in range(args.num_samples):
     if args.bpm is not None:
       generate_in_tempo(gan_video_synth, args.bpm, args.num_beats, args.classes, args.y_scale, args.truncation,
-                        args.random_label, ext=args.ext)
+                        args.random_label, ext=args.ext, quantize_label=args.quantize_label)
     else:
       generate(gan_video_synth)
 
