@@ -113,3 +113,7 @@ The advantages of running locally are that you won't have to download the genera
                       random_label=random_label, classes=classes, quantize_label=quantize_label,
                       y_scale=y_scale)
     ```
+   This will generate an animated GIF in the `renders` directory.
+   The first time you run this, it will take a few minutes as the model "warms up".
+   After that, it will take significantly less time to run. If you're trying to generate
+   more frames (i.e. `num_beats` is higher or `bpm` is lower), it will take longer.
