@@ -1,9 +1,8 @@
-"""example.py: Get Colab working locally.
-From https://colab.research.google.com/drive/1ifHb_9Pj5zcCRuCZ_H6P3DjjBbxvXnMH#scrollTo=stWb21nlcyCm
+"""example.py: Generate video with BigGAN model.
+Much of the code in this example is from the BigGAN TF Hub Demo Colab: https://colab.research.google.com/github/tensorflow/hub/blob/master/examples/colab/biggan_generation_with_tf_hub.ipynb
 """
 
 import argparse
-import io
 import os
 import numpy as np
 from scipy.stats import truncnorm
@@ -212,7 +211,8 @@ def generate(gan_video_synth, fps=30):
 
 
 def ramp(x, phase=0):
-    return (x + phase) % TAU
+  """Saw wave."""
+  return (x + phase) % TAU
 
 
 def generate_in_tempo(gan_video_synth, bpm=120, num_beats=16, classes=[309], y_scale=1, truncation=1,
