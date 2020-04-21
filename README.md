@@ -56,18 +56,25 @@ The advantages of running locally are that you won't have to download the genera
    ```
  3. Define performance parameters:
     ```python
+    # Tempo of the song in beats per minute.
     bpm = 135
     
+    # Number of beats to generate an animation for.
     num_beats = 16
     
+    # ImageNet class IDs to include in the y vector.
     classes = [398, 402]
     
+    # Magnitude to scale the y vector to. If this goes higher than 7-8, the images get quite abstract.
     y_scale = 2
     
+    # If true, then ignore the `classes` setting and generate a random y vector.
     random_label = False
     
+    # If true, then quantize y vector entries to 1 if greater than 0.5, or 0 otherwise.
     quantize_label = False
     
+    # The indices in the range [0, 128) to change in the z vector.
     axis_sets = [
         range(0, 8),
         range(8, 16),
@@ -81,6 +88,7 @@ The advantages of running locally are that you won't have to download the genera
         range(72, 80)
     ]
     
+    # How much to change each set of indices. Greater values make more noticeable change.
     magnitudes = [
         0.8,
         0.8,
@@ -94,6 +102,7 @@ The advantages of running locally are that you won't have to download the genera
         1
     ]
     
+    # The periodic functions that change the z vector index sets. `ramp` is a saw wave.
     funcs = [
         ramp,
         np.sin,
@@ -106,12 +115,26 @@ The advantages of running locally are that you won't have to download the genera
         np.cos,
         np.sin
     ]
+    
+    # The periods of the preceding functions. 1 repeats every beat, 2 repeats every 2 beats, etc.
+    periods = [
+        1,
+        1,
+        2,
+        2,
+        4,
+        4,
+        8,
+        8,
+        16,
+        16
+    ]
     ```
 4. Run the model with the given parameters:
     ```python
     generate_in_tempo(gvs, bpm=bpm, magnitudes=magnitudes, funcs=funcs, axis_sets=axis_sets,
                       random_label=random_label, classes=classes, quantize_label=quantize_label,
-                      y_scale=y_scale)
+                      y_scale=y_scale, periods=periods)
     ```
    This will generate an animated GIF in the `renders` directory.
    The first time you run this, it will take a few minutes as the model "warms up".
