@@ -150,6 +150,42 @@ def write_gif(ims, duration=4, fps=30, fname='ani.gif'):
     clip.write_videofile(fname, fps=fps, verbose=False, codec='mpeg4')
 
 
+# Image processing functions
+
+def fit_to_ratio(ims, aspect_ratio=16/9):
+  """
+  Args:
+    ims (np array) [num_frames, height, width, 3]
+    aspect_ratio (float) ratio of width to height
+
+  Outputs:
+    (np array) [num_frames, height, int(width * aspect_ratio), 3]
+  """
+  if aspect_ratio < 1:
+    raise NotImplementedError("Expected aspect ratio to have greater width than height")
+  if len(ims.shape) != 4:
+    raise NotImplementedError("Expected input with dimensions (num_frames, height, width, 3); got {}".format(ims.shape))
+
+  orig_width = ims.shape[2]
+
+  # Round out_width to nearest pixel.
+  out_width = int(orig_width * aspect_ratio)
+  left_pad, right_pad = int(np.floor((out_width - orig_width) / 2)), int(np.ceil((out_width - orig_width) / 2))
+
+  out_shape = (ims.shape[0], ims.shape[1], out_width, ims.shape[3])
+  res = np.zeros(out_shape, dtype=np.uint8)
+
+  for i in range(ims.shape[0]):
+    # Original image in center
+    res[i, :, left_pad:left_pad + orig_width, :] = ims[i]
+    # Mirror left (TODO actually mirror)
+    res[i, :, 0:left_pad, :] = ims[i, :, left_pad:0:-1, :]
+    # Mirror right (TODO actually mirror)
+    res[i, :, left_pad + orig_width:out_width, :] = ims[i, :, orig_width:orig_width - right_pad - 1:-1, :]
+
+  return res
+
+
 # Generation functions
 
 def generate(gan_video_synth, fps=30):
@@ -313,6 +349,8 @@ def generate_in_tempo(gan_video_synth, bpm=120, num_beats=16, classes=[309], y_s
 
   # Generate images
   ims = gan_video_synth.sample(zs, ys, truncation=truncation, batch_size=1)
+  # Transform
+  ims = fit_to_ratio(ims)
   # Save numpy array
   np.save(os.path.join('npys', 'out.npy'), ims)
   # Save its hash, for cached reads
