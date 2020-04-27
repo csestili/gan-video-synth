@@ -1,37 +1,50 @@
-from example import *
+import os
+
 import numpy as np
 import cv2
 
-gvs = GanVideoSynth()
-num_frames = 25
 
-ims = None
-
-z0 = np.random.normal(size=(1, 128))
+FPS = 30
+WAIT_TIME_MS = int(1000 / FPS)
 
 
-def sample(z0):
-    zn = np.random.normal(size=(1, 128))
-    zs = np.zeros((num_frames, 128))
-    for i in range(num_frames):
-        zs[i] = z0 * (num_frames - i)/num_frames + zn * i / num_frames
+def load():
+    try:
+        ims = np.load(os.path.join('npys', 'out.npy'))
+        num_frames = ims.shape[0]
+    except Exception as e:
+        print(e)
+        ims = np.zeros((1, 1, 1))
+        num_frames = 1
+    return ims, num_frames
 
-    ys = np.zeros((num_frames, 1000))
-    ys[:, 0] = 1
-    return gvs.sample(zs, ys), zs[-1]
+
+def main():
+    last_hash = None
+
+    ims, num_frames = load()
+
+    cur_frame = 0
+    try:
+        while True:
+            if cur_frame >= num_frames:
+                cur_frame = 0
+
+                # Check if file has changed
+                with open(os.path.join('npys', 'last_hash.txt'), 'r') as f:
+                    cur_hash = f.readlines()
+
+                # If the file has changed, then load the new one
+                if cur_hash != last_hash:
+                    last_hash = cur_hash
+                    ims, num_frames = load()
+
+            cv2.imshow('win', ims[cur_frame])
+            cv2.waitKey(WAIT_TIME_MS)
+            cur_frame += 1
+    except KeyboardInterrupt:
+        cv2.destroyAllWindows()
 
 
-ims, z0 = sample(z0)
-cur_frame = 0
-num_resets = 0
-try:
-    while True:
-        if cur_frame >= num_frames:
-            cur_frame = 0
-            ims, z0 = sample(z0)
-
-        cv2.imshow('win', ims[cur_frame])
-        cv2.waitKey(25)
-        cur_frame += 1
-except KeyboardInterrupt:
-    cv2.destroyAllWindows()
+if __name__ == '__main__':
+    main()

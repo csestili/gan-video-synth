@@ -24,7 +24,7 @@ class GanVideoSynth(object):
   def _module(self):
     if self.__module is None:
       # TODO allow model selection as flag
-      module_path = 'https://tfhub.dev/deepmind/biggan-deep-256/1'  # 256x256 BigGAN-deep
+      module_path = 'https://tfhub.dev/deepmind/biggan-deep-512/1'  # 256x256 BigGAN-deep
 
       tf.compat.v1.reset_default_graph()
       print('Loading BigGAN module from:', module_path)
@@ -216,7 +216,7 @@ def ramp(x, phase=0):
 
 
 def generate_in_tempo(gan_video_synth, bpm=120, num_beats=16, classes=[309], y_scale=1, truncation=1,
-                      random_label=False, ext='.gif', fps=30, axis_sets=None, magnitudes=None, periods=None,
+                      random_label=False, ext=None, fps=30, axis_sets=None, magnitudes=None, periods=None,
                       funcs=None, quantize_label=False):
   
   duration = 1 / bpm * num_beats * 60
@@ -312,8 +312,16 @@ def generate_in_tempo(gan_video_synth, bpm=120, num_beats=16, classes=[309], y_s
       zs[:, ax] += func(np.linspace(0, 1.0 / period * num_beats * TAU, num=num_frames + 1)[:num_frames]) * mag
 
   # Generate images
-  ims = gan_video_synth.sample(zs, ys, truncation=truncation, batch_size=8)
-  gan_video_synth.write_gif(ims, duration, out_dir='renders', ext=ext)
+  ims = gan_video_synth.sample(zs, ys, truncation=truncation, batch_size=1)
+  # Save numpy array
+  np.save(os.path.join('npys', 'out.npy'), ims)
+  # Save its hash, for cached reads
+  with open(os.path.join('npys', 'last_hash.txt'), 'w') as f:
+    f.write(str(hash(ims.tostring())) + '\n')
+
+  # Save rendered animation
+  if ext is not None:
+    gan_video_synth.write_gif(ims, duration, out_dir='renders', ext=ext)
 
 
 def _get_parser():
@@ -325,7 +333,7 @@ def _get_parser():
   parser.add_argument('--y-scale', default=0.9, type=float)
   parser.add_argument('--truncation', default=1, type=float)
   parser.add_argument('--random-label', action='store_true')
-  parser.add_argument('--ext', default='.gif')
+  parser.add_argument('--ext', default=None, help='Extension to save rendered animation. If not passed, then don\'t save. Options are .gif, .mp4')
   parser.add_argument('--quantize-label', action='store_true')
   return parser
 

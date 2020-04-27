@@ -134,7 +134,7 @@ The advantages of running locally are that you won't have to download the genera
     ```python
     generate_in_tempo(gvs, bpm=bpm, magnitudes=magnitudes, funcs=funcs, axis_sets=axis_sets,
                       random_label=random_label, classes=classes, quantize_label=quantize_label,
-                      y_scale=y_scale, periods=periods)
+                      y_scale=y_scale, periods=periods, num_beats=num_beats)
     ```
    This will generate an animated GIF in the `renders` directory.
    The first time you run this, it will take a few minutes as the model "warms up".
