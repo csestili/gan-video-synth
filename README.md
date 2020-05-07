@@ -24,9 +24,9 @@ Much of the code in this repo is from the [BigGAN TF Hub Demo Colab](https://col
 To make it easy for artists to generate videos with a significant machine learning model.
 
 # How?
-The software in this repo runs a neural network on the GPU.
+The software in this repo runs a neural network on your GPU.
 If you'd like to generate video with GANs without doing the following local setup, try using the BigGAN Colab linked above.
-The advantages of running locally are that you won't have to download the generated GIFs, and if you have a nice GPU, you might be able to generate videos faster than in the Colab.
+The advantages of running locally are that you won't have to download the generated files, and if you have a nice GPU, you might be able to generate videos faster than in the Colab.
 
 ## Local setup
 1. Ensure that Python 3.7 is installed on your machine.
@@ -54,8 +54,10 @@ The advantages of running locally are that you won't have to download the genera
 
    gvs = GanVideoSynth()
    ```
- 3. Define performance parameters:
+ 3. Define performance parameters, like tempo, number of beats, class IDs, and more. See `calls.py` for an example.
     ```python
+    ### See full list of parameters in calls.py ###
+    
     # Tempo of the song in beats per minute.
     bpm = 135
     
@@ -64,71 +66,6 @@ The advantages of running locally are that you won't have to download the genera
     
     # ImageNet class IDs to include in the y vector.
     classes = [398, 402]
-    
-    # Magnitude to scale the y vector to. If this goes higher than 7-8, the images get quite abstract.
-    y_scale = 2
-    
-    # If true, then ignore the `classes` setting and generate a random y vector.
-    random_label = False
-    
-    # If true, then quantize y vector entries to 1 if greater than 0.5, or 0 otherwise.
-    quantize_label = False
-    
-    # The indices in the range [0, 128) to change in the z vector.
-    axis_sets = [
-        range(0, 8),
-        range(8, 16),
-        range(16, 24),
-        range(24, 32),
-        range(32, 40),
-        range(40, 48),
-        range(48, 56),
-        range(56, 64),
-        range(64, 72),
-        range(72, 80)
-    ]
-    
-    # How much to change each set of indices. Greater values make more noticeable change.
-    magnitudes = [
-        0.8,
-        0.8,
-        0.9,
-        0.9,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1
-    ]
-    
-    # The periodic functions that change the z vector index sets. `ramp` is a saw wave.
-    funcs = [
-        ramp,
-        np.sin,
-        ramp,
-        np.sin,
-        ramp,
-        np.sin,
-        np.cos,
-        np.sin,
-        np.cos,
-        np.sin
-    ]
-    
-    # The periods of the preceding functions. 1 repeats every beat, 2 repeats every 2 beats, etc.
-    periods = [
-        1,
-        1,
-        2,
-        2,
-        4,
-        4,
-        8,
-        8,
-        16,
-        16
-    ]
     ```
 4. Run the model with the given parameters:
     ```python
@@ -136,7 +73,17 @@ The advantages of running locally are that you won't have to download the genera
                       random_label=random_label, classes=classes, quantize_label=quantize_label,
                       y_scale=y_scale, periods=periods, num_beats=num_beats)
     ```
-   This will generate an animated GIF in the `renders` directory.
+   This will generate a numpy array in the `npys` directory.
    The first time you run this, it will take a few minutes as the model "warms up".
    After that, it will take significantly less time to run. If you're trying to generate
    more frames (i.e. `num_beats` is higher or `bpm` is lower), it will take longer.
+   
+# FAQ
+## I ran all the commands but don't see anything. What do I do?
+The model generates a numpy array and saves it as `npys/out.npy`.
+To visualize this as a video on your screen, run `imshow_test.py` in a separate Python process.
+## How do I get an animated GIF or video file output?
+Set `ext='.gif'` or `ext='.mp4'` in the arguments to `generate_in_tempo()`.
+This will create an animated GIF or MP4 video file in the `renders` directory.
+## How can I understand and control what's happening?
+Check out this [blog post](https://www.linkedin.com/pulse/how-i-generated-abstract-videos-live-machine-learning-carson-sestili) I wrote to help explain what's going on in this repo, and how you can change the parameters to fit your artistic goals.
