@@ -1,3 +1,9 @@
+"""view_npy.py: Visualize the output of the GANVideoSynth model as video.
+
+Usage:
+1. Run `generate_in_tempo()` inside `example.py`, to generate a numpy array in `npys`.
+2. pipenv run python view_npy.py
+"""
 import os
 
 import numpy as np

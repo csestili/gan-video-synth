@@ -77,11 +77,15 @@ The advantages of running locally are that you won't have to download the genera
    The first time you run this, it will take a few minutes as the model "warms up".
    After that, it will take significantly less time to run. If you're trying to generate
    more frames (i.e. `num_beats` is higher or `bpm` is lower), it will take longer.
+5. Visualize the output. Do the following in a separate python process:
+   ```
+   pipenv run python view_npy.py
+   ```
    
 # FAQ
 ## I ran all the commands but don't see anything. What do I do?
 The model generates a numpy array and saves it as `npys/out.npy`.
-To visualize this as a video on your screen, run `imshow_test.py` in a separate Python process.
+To visualize this as a video on your screen, run `view_npy.py` in a separate Python process.
 ## How do I get an animated GIF or video file output?
 Set `ext='.gif'` or `ext='.mp4'` in the arguments to `generate_in_tempo()`.
 This will create an animated GIF or MP4 video file in the `renders` directory.
