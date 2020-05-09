@@ -400,12 +400,24 @@ def generate_from_audio(gan_video_synth, audio_fname, classes=[309], y_scale=1, 
   for frame in range(num_frames):
     for bin in range(num_bins):
       mag = spectrogram[bin, frame]
-      # Exponential decay to weight low frequencies higher.
+      # Exponential decay to weight low frequencies higher. This is a low-pass filter applied per window.
       mag *= np.exp(-1.0 * exp_decay_alpha * mag)
       # Write each magnitude to a separate z coordinate, and then wrap around.
       zs[frame, bin % gan_video_synth.dim_z] += mag
+  # Smooth in time, so that the reactions don't happen too quickly
+  # https://en.wikipedia.org/wiki/Exponential_smoothing
+  exp_smoothing_alpha = 0.5
+  zs_smoothed = np.zeros((num_frames, gan_video_synth.dim_z))
+  for i in range(num_frames):
+    if i == 0:
+      zs_smoothed[i] = zs[i]
+    else:
+      zs_smoothed[i] = exp_smoothing_alpha * zs[i] + (1 - exp_smoothing_alpha) * zs_smoothed[i - 1]
+  zs = zs_smoothed
   # Normalize
   zs /= np.max(np.linalg.norm(zs, axis=1))
+  # Amplify
+  zs *= 3
 
   # Create ys as in generate_in_tempo().
   if random_label:
