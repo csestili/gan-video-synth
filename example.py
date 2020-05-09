@@ -5,6 +5,8 @@ Much of the code in this example is from the BigGAN TF Hub Demo Colab: https://c
 import argparse
 import os
 import numpy as np
+import scipy.io.wavfile
+import scipy.signal
 from scipy.stats import truncnorm
 import tensorflow as tf
 import tensorflow_hub as hub
@@ -76,13 +78,13 @@ class GanVideoSynth(object):
     self.dim_z = self.input_z.shape.as_list()[1]
     self.vocab_size = self.input_y.shape.as_list()[1]
 
-  def write_gif(self, ims, duration, out_dir='renders', fps=20, ext='.gif'):
+  def write_gif(self, ims, duration, out_dir='renders', fps=20, ext='.gif', audio_fname=None):
     """
     :param self:
     :param ext: (str) '.gif' or '.mp4'
     """
     fname = os.path.join(out_dir, datetime.now().strftime("%Y%m%d%H%M%S") + ext)
-    write_gif(ims, duration=duration, fname=fname, fps=fps)
+    write_gif(ims, duration=duration, fname=fname, fps=fps, audio_fname=audio_fname)
 
   def sample(self, zs, ys, truncation=1., batch_size=16,
              vocab_size=None):
@@ -143,7 +145,7 @@ def interpolate(A, B, num_interps):
   alphas = np.linspace(0, 1, num_interps)
   return np.array([(1-a)*A + a*B for a in alphas])
 
-def write_gif(ims, duration=4, fps=30, fname='ani.gif'):
+def write_gif(ims, duration=4, fps=30, fname='ani.gif', audio_fname=None):
   num_frames = ims.shape[0]
 
   def make_frame(t):
@@ -157,6 +159,8 @@ def write_gif(ims, duration=4, fps=30, fname='ani.gif'):
     clip.write_gif(fname, fps=fps, verbose=False)
   elif fname.endswith('.mp4'):
     clip.write_videofile(fname, fps=fps, verbose=False, codec='mpeg4')
+  elif fname.endswith('.avi'):
+    clip.write_videofile(fname, fps=fps, verbose=False, codec='png', audio=audio_fname, audio_codec='pcm_s16le')
 
 
 # Image processing functions
@@ -371,6 +375,74 @@ def generate_in_tempo(gan_video_synth, bpm=120, num_beats=16, classes=[309], y_s
     gan_video_synth.write_gif(ims, duration, out_dir='renders', ext=ext)
 
 
+def generate_from_audio(gan_video_synth, audio_fname, classes=[309], y_scale=1, truncation=1,
+                      random_label=False, ext='.avi', fps=30, quantize_label=False):
+
+  # data shape: [num_samples, num_channels]
+  rate, data = scipy.io.wavfile.read(audio_fname)
+
+  # Length of window. We'll use a window that covers the duration of 2 video frames, because windows overlap by half.
+  # This *should* make the number of STFT frames equal to the number of video frames.
+  # It's apparently off by one, not sure why.
+  nperseg = 2 * (rate // fps)
+  # zxx is a complex array with shape: [num_bins, num_channels, num_windows]
+  _, _, zxx = scipy.signal.stft(data, axis=0, nperseg=nperseg)
+  # Discard phase. Shape is still [num_bins, num_channels, num_windows]
+  spectrogram = np.abs(zxx)
+  # Collapse channels. To create images that are different in each channel, don't do this.
+  # Shape is now [num_bins, num_windows]
+  spectrogram = np.sum(spectrogram, axis=1)
+  num_bins, num_frames = spectrogram.shape
+
+  # Create z coordinates by re-binning spectrogram.
+  zs = np.zeros((num_frames, gan_video_synth.dim_z))
+  exp_decay_alpha = 0.005
+  for frame in range(num_frames):
+    for bin in range(num_bins):
+      mag = spectrogram[bin, frame]
+      # Exponential decay to weight low frequencies higher.
+      mag *= np.exp(-1.0 * exp_decay_alpha * mag)
+      # Write each magnitude to a separate z coordinate, and then wrap around.
+      zs[frame, bin % gan_video_synth.dim_z] += mag
+  # Normalize
+  zs /= np.max(np.linalg.norm(zs, axis=1))
+
+  # Create ys as in generate_in_tempo().
+  if random_label:
+    # Random label vec
+    y = truncated_z_sample(1, gan_video_synth.vocab_size, truncation, int(datetime.now().strftime('%f')))
+  else:
+    # Indexed label vec
+    y = np.zeros((1, gan_video_synth.vocab_size))
+    for axis in classes:
+      y[0, axis] = 1
+
+  y = y / np.linalg.norm(y) * y_scale
+
+  # Quantize y values to 0 and 1
+  if quantize_label:
+    y = (abs(y) > 0.5).astype(int)
+
+  # Expand ys out to full shape
+  ys = np.repeat(y, num_frames, axis=0)
+
+  # Generate images
+  ims = gan_video_synth.sample(zs, ys, truncation=truncation, batch_size=1)
+  # Transform
+  ims = fit_to_ratio(ims)
+  # Save numpy array
+  np.save(os.path.join('npys', 'out.npy'), ims)
+  # Save its hash, for cached reads
+  with open(os.path.join('npys', 'last_hash.txt'), 'w') as f:
+    f.write(str(hash(ims.tostring())) + '\n')
+
+  # Save rendered animation
+  if ext is not None:
+    duration = data.shape[0] / rate
+    # TODO did I break mp4 writing? check!
+    gan_video_synth.write_gif(ims, duration, out_dir='renders', ext=ext, fps=fps, audio_fname=audio_fname)
+
+
 def _get_parser():
   parser = argparse.ArgumentParser()
   parser.add_argument('--num-samples', default=1, type=int)
@@ -383,6 +455,7 @@ def _get_parser():
   parser.add_argument('--ext', default=None, help='Extension to save rendered animation. If not passed, then don\'t render and just save numpy array. Options are .gif, .mp4')
   parser.add_argument('--quantize-label', action='store_true')
   parser.add_argument('--model', choices=MODULE_PATH_MAPPING.keys(), default='512-deep')
+  parser.add_argument('--audio', default='audio/test0.wav')
   return parser
 
 
@@ -390,9 +463,13 @@ if __name__ == '__main__':
   args = _get_parser().parse_args()
   gan_video_synth = GanVideoSynth(model_string=args.model)
 
-  # TODO generate multiple samples as a batch, not as a loop
-  for _ in range(args.num_samples):
-      generate_in_tempo(gan_video_synth, args.bpm, args.num_beats, args.classes, args.y_scale, args.truncation,
-                        args.random_label, ext=args.ext, quantize_label=args.quantize_label)
+  if args.audio:
+    generate_from_audio(gan_video_synth, args.audio)
+
+  else:
+    # TODO generate multiple samples as a batch, not as a loop
+    for _ in range(args.num_samples):
+        generate_in_tempo(gan_video_synth, args.bpm, args.num_beats, args.classes, args.y_scale, args.truncation,
+                          args.random_label, ext=args.ext, quantize_label=args.quantize_label)
 
 
