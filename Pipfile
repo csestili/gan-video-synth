@@ -10,7 +10,7 @@ numpy = "*"
 scipy = "*"
 tensorflow-hub = "==0.7.0"
 moviepy = "*"
-tensorflow-gpu = "==1.15.0"
+tensorflow-gpu = "==1.15.2"
 opencv-python = "*"
 
 [requires]
