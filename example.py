@@ -18,13 +18,21 @@ os.environ["TFHUB_CACHE_DIR"] = '/tmp/tfhub'
 TAU = 2 * np.pi
 
 
+MODULE_PATH_MAPPING = {
+  # These models are included since they all have 128-dimensional z-space.
+  '128-deep': 'https://tfhub.dev/deepmind/biggan-deep-128/1',
+  '256-deep': 'https://tfhub.dev/deepmind/biggan-deep-256/1',
+  '512-deep': 'https://tfhub.dev/deepmind/biggan-deep-512/1',
+  '512': 'https://tfhub.dev/deepmind/biggan-512/2',
+}
+
+
 class GanVideoSynth(object):
 
   @property
   def _module(self):
     if self.__module is None:
-      # TODO allow model selection as flag
-      module_path = 'https://tfhub.dev/deepmind/biggan-deep-256/1'  # 256x256 BigGAN-deep
+      module_path = MODULE_PATH_MAPPING[self.model_string]
 
       tf.compat.v1.reset_default_graph()
       print('Loading BigGAN module from:', module_path)
@@ -53,7 +61,8 @@ class GanVideoSynth(object):
       self.__session.run(initializer)
     return self.__session
 
-  def __init__(self):
+  def __init__(self, model_string='512-deep'):
+    self.model_string = model_string
     self.__module = None
     self.__inputs = None
     self.__output = None
@@ -150,6 +159,42 @@ def write_gif(ims, duration=4, fps=30, fname='ani.gif'):
     clip.write_videofile(fname, fps=fps, verbose=False, codec='mpeg4')
 
 
+# Image processing functions
+
+def fit_to_ratio(ims, aspect_ratio=16/9):
+  """Pad a square image out to a rectangular aspect ratio, by mirroring the sides.
+  Args:
+    ims (np array) [num_frames, height, width, 3]
+    aspect_ratio (float) ratio of width to height
+
+  Outputs:
+    (np array) [num_frames, height, int(width * aspect_ratio), 3]
+  """
+  if aspect_ratio < 1:
+    raise NotImplementedError("Expected aspect ratio to have greater width than height")
+  if len(ims.shape) != 4:
+    raise NotImplementedError("Expected input with dimensions (num_frames, height, width, 3); got {}".format(ims.shape))
+
+  orig_width = ims.shape[2]
+
+  # Round out_width to nearest pixel.
+  out_width = int(orig_width * aspect_ratio)
+  left_pad, right_pad = int(np.floor((out_width - orig_width) / 2)), int(np.ceil((out_width - orig_width) / 2))
+
+  out_shape = (ims.shape[0], ims.shape[1], out_width, ims.shape[3])
+  res = np.zeros(out_shape, dtype=np.uint8)
+
+  for i in range(ims.shape[0]):
+    # Original image in center
+    res[i, :, left_pad:left_pad + orig_width, :] = ims[i]
+    # Mirror left
+    res[i, :, 0:left_pad, :] = ims[i, :, left_pad:0:-1, :]
+    # Mirror right
+    res[i, :, left_pad + orig_width:out_width, :] = ims[i, :, orig_width:orig_width - right_pad - 1:-1, :]
+
+  return res
+
+
 # Generation functions
 
 def generate(gan_video_synth, fps=30):
@@ -216,7 +261,7 @@ def ramp(x, phase=0):
 
 
 def generate_in_tempo(gan_video_synth, bpm=120, num_beats=16, classes=[309], y_scale=1, truncation=1,
-                      random_label=False, ext='.gif', fps=30, axis_sets=None, magnitudes=None, periods=None,
+                      random_label=False, ext=None, fps=30, axis_sets=None, magnitudes=None, periods=None,
                       funcs=None, quantize_label=False):
   
   duration = 1 / bpm * num_beats * 60
@@ -312,34 +357,42 @@ def generate_in_tempo(gan_video_synth, bpm=120, num_beats=16, classes=[309], y_s
       zs[:, ax] += func(np.linspace(0, 1.0 / period * num_beats * TAU, num=num_frames + 1)[:num_frames]) * mag
 
   # Generate images
-  ims = gan_video_synth.sample(zs, ys, truncation=truncation, batch_size=8)
-  gan_video_synth.write_gif(ims, duration, out_dir='renders', ext=ext)
+  ims = gan_video_synth.sample(zs, ys, truncation=truncation, batch_size=1)
+  # Transform
+  ims = fit_to_ratio(ims)
+  # Save numpy array
+  np.save(os.path.join('npys', 'out.npy'), ims)
+  # Save its hash, for cached reads
+  with open(os.path.join('npys', 'last_hash.txt'), 'w') as f:
+    f.write(str(hash(ims.tostring())) + '\n')
+
+  # Save rendered animation
+  if ext is not None:
+    gan_video_synth.write_gif(ims, duration, out_dir='renders', ext=ext)
 
 
 def _get_parser():
   parser = argparse.ArgumentParser()
   parser.add_argument('--num-samples', default=1, type=int)
-  parser.add_argument('--bpm', default=None, type=int)
-  parser.add_argument('--num-beats', default=None, type=int)
+  parser.add_argument('--bpm', default=120, type=int)
+  parser.add_argument('--num-beats', default=4, type=int)
   parser.add_argument('--classes', nargs='+', type=int, default=[309])
   parser.add_argument('--y-scale', default=0.9, type=float)
   parser.add_argument('--truncation', default=1, type=float)
   parser.add_argument('--random-label', action='store_true')
-  parser.add_argument('--ext', default='.gif')
+  parser.add_argument('--ext', default=None, help='Extension to save rendered animation. If not passed, then don\'t render and just save numpy array. Options are .gif, .mp4')
   parser.add_argument('--quantize-label', action='store_true')
+  parser.add_argument('--model', choices=MODULE_PATH_MAPPING.keys(), default='512-deep')
   return parser
 
 
 if __name__ == '__main__':
   args = _get_parser().parse_args()
-  gan_video_synth = GanVideoSynth()
+  gan_video_synth = GanVideoSynth(model_string=args.model)
 
   # TODO generate multiple samples as a batch, not as a loop
   for _ in range(args.num_samples):
-    if args.bpm is not None:
       generate_in_tempo(gan_video_synth, args.bpm, args.num_beats, args.classes, args.y_scale, args.truncation,
                         args.random_label, ext=args.ext, quantize_label=args.quantize_label)
-    else:
-      generate(gan_video_synth)
 
 
