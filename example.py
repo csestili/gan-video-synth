@@ -376,7 +376,8 @@ def generate_in_tempo(gan_video_synth, bpm=120, num_beats=16, classes=[309], y_s
 
 
 def generate_from_audio(gan_video_synth, audio_fname, classes=[309], y_scale=1, truncation=1,
-                      random_label=False, ext='.avi', fps=30, quantize_label=False):
+                        random_label=False, ext='.avi', fps=30, quantize_label=False,
+                        time_smoothing_alpha=0.0, lowpass_alpha=0.0):
 
   # data shape: [num_samples, num_channels]
   rate, data = scipy.io.wavfile.read(audio_fname)
@@ -396,24 +397,24 @@ def generate_from_audio(gan_video_synth, audio_fname, classes=[309], y_scale=1, 
 
   # Create z coordinates by re-binning spectrogram.
   zs = np.zeros((num_frames, gan_video_synth.dim_z))
-  exp_decay_alpha = 0.005
   for frame in range(num_frames):
     for bin in range(num_bins):
       mag = spectrogram[bin, frame]
-      # Exponential decay to weight low frequencies higher. This is a low-pass filter applied per window.
-      mag *= np.exp(-1.0 * exp_decay_alpha * mag)
+      if lowpass_alpha > 0:
+        # Exponential decay to weight low frequencies higher. This is a low-pass filter applied per window.
+        mag *= np.exp(-1.0 * lowpass_alpha * mag)
       # Write each magnitude to a separate z coordinate, and then wrap around.
       zs[frame, bin % gan_video_synth.dim_z] += mag
   # Smooth in time, so that the reactions don't happen too quickly
   # https://en.wikipedia.org/wiki/Exponential_smoothing
-  exp_smoothing_alpha = 0.5
-  zs_smoothed = np.zeros((num_frames, gan_video_synth.dim_z))
-  for i in range(num_frames):
-    if i == 0:
-      zs_smoothed[i] = zs[i]
-    else:
-      zs_smoothed[i] = exp_smoothing_alpha * zs[i] + (1 - exp_smoothing_alpha) * zs_smoothed[i - 1]
-  zs = zs_smoothed
+  if time_smoothing_alpha > 0:
+    zs_smoothed = np.zeros((num_frames, gan_video_synth.dim_z))
+    for i in range(num_frames):
+      if i == 0:
+        zs_smoothed[i] = zs[i]
+      else:
+        zs_smoothed[i] = (1.0 - time_smoothing_alpha) * zs[i] + time_smoothing_alpha * zs_smoothed[i - 1]
+    zs = zs_smoothed
   # Normalize
   zs /= np.max(np.linalg.norm(zs, axis=1))
   # Amplify
