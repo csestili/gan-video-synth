@@ -402,6 +402,9 @@ def generate_from_audio(gan_video_synth, audio_fname, classes=[309], y_scale=1, 
   # When this quantity is close to 0, the signal is nearly mono.
   # The greater this quantity, the more stereo the signal is.
   side_mid_ratio = np.sum(np.abs(side), axis=0) / (np.sum(mid, axis=0) + 0.00001)
+  # Rescale to [0, 1]
+  normalized_smr = side_mid_ratio - np.min(side_mid_ratio)
+  normalized_smr = normalized_smr / np.max(normalized_smr)
 
   num_bins, num_frames = mid.shape
 
@@ -451,7 +454,7 @@ def generate_from_audio(gan_video_synth, audio_fname, classes=[309], y_scale=1, 
 
   # Scale each frame by stereo strength.
   for i in range(num_frames):
-    ys[i] += ys[i] * side_mid_ratio[i]
+    ys[i] += ys[i] * normalized_smr[i]
 
   # Generate images
   ims = gan_video_synth.sample(zs, ys, truncation=truncation, batch_size=1)

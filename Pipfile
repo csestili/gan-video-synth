@@ -12,6 +12,7 @@ tensorflow-hub = "==0.7.0"
 moviepy = "*"
 tensorflow-gpu = "==1.15.2"
 opencv-python = "*"
+matplotlib = "*"
 
 [requires]
 python_version = "3.7"
