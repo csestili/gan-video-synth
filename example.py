@@ -377,7 +377,8 @@ def generate_in_tempo(gan_video_synth, bpm=120, num_beats=16, classes=[309], y_s
 
 def generate_from_audio(gan_video_synth, audio_fname, classes=[309], y_scale=1, truncation=1,
                         random_label=False, ext='.avi', fps=30, quantize_label=False,
-                        time_smoothing_alpha=0.0, lowpass_alpha=0.0):
+                        time_smoothing_alpha=0.0, lowpass_alpha=0.0,
+                        adjust_aspect_ratio=False):
 
   # data shape: [num_samples, num_channels]
   rate, data = scipy.io.wavfile.read(audio_fname)
@@ -390,16 +391,25 @@ def generate_from_audio(gan_video_synth, audio_fname, classes=[309], y_scale=1, 
   _, _, zxx = scipy.signal.stft(data, axis=0, nperseg=nperseg)
   # Discard phase. Shape is still [num_bins, num_channels, num_windows]
   spectrogram = np.abs(zxx)
-  # Collapse channels. To create images that are different in each channel, don't do this.
-  # Shape is now [num_bins, num_windows]
-  spectrogram = np.sum(spectrogram, axis=1)
-  num_bins, num_frames = spectrogram.shape
+
+  # Get mid/side energy in each bin and window.
+  if spectrogram.shape[1] != 2:
+    raise NotImplementedError("Mid-side processing is only implemented for stereo signals, but was given a non-stereo signal.")
+  # Shape of each is [num_bins, num_windows]
+  mid = 0.5 * np.sum(spectrogram, axis=1)
+  side = 0.5 * (spectrogram[:, 1, :] - spectrogram[:, 0, :])
+  # Get the ratio, summing across bins.
+  # When this quantity is close to 0, the signal is nearly mono.
+  # The greater this quantity, the more stereo the signal is.
+  side_mid_ratio = np.sum(np.abs(side), axis=0) / (np.sum(mid, axis=0) + 0.00001)
+
+  num_bins, num_frames = mid.shape
 
   # Create z coordinates by re-binning spectrogram.
   zs = np.zeros((num_frames, gan_video_synth.dim_z))
   for frame in range(num_frames):
     for bin in range(num_bins):
-      mag = spectrogram[bin, frame]
+      mag = mid[bin, frame]
       if lowpass_alpha > 0:
         # Exponential decay to weight low frequencies higher. This is a low-pass filter applied per window.
         mag *= np.exp(-1.0 * lowpass_alpha * mag)
@@ -439,10 +449,17 @@ def generate_from_audio(gan_video_synth, audio_fname, classes=[309], y_scale=1, 
   # Expand ys out to full shape
   ys = np.repeat(y, num_frames, axis=0)
 
+  # Scale each frame by stereo strength.
+  for i in range(num_frames):
+    ys[i] += ys[i] * side_mid_ratio[i]
+
   # Generate images
   ims = gan_video_synth.sample(zs, ys, truncation=truncation, batch_size=1)
-  # Transform
-  ims = fit_to_ratio(ims)
+
+  if adjust_aspect_ratio:
+    # Transform to 16:9
+    ims = fit_to_ratio(ims)
+
   # Save numpy array
   np.save(os.path.join('npys', 'out.npy'), ims)
   # Save its hash, for cached reads
