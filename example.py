@@ -78,12 +78,15 @@ class GanVideoSynth(object):
     self.dim_z = self.input_z.shape.as_list()[1]
     self.vocab_size = self.input_y.shape.as_list()[1]
 
-  def write_gif(self, ims, duration, out_dir='renders', fps=20, ext='.gif', audio_fname=None):
+  def write_gif(self, ims, duration, out_dir='renders', fps=20, ext='.gif', audio_fname=None, fname_suffix=None):
     """
     :param self:
     :param ext: (str) '.gif' or '.mp4'
     """
-    fname = os.path.join(out_dir, datetime.now().strftime("%Y%m%d%H%M%S") + ext)
+    basename = datetime.now().strftime("%Y%m%d%H%M%S")
+    if fname_suffix is not None:
+      basename = basename + fname_suffix
+    fname = os.path.join(out_dir, basename + ext)
     write_gif(ims, duration=duration, fname=fname, fps=fps, audio_fname=audio_fname)
 
   def sample(self, zs, ys, truncation=1., batch_size=16,
@@ -378,7 +381,7 @@ def generate_in_tempo(gan_video_synth, bpm=120, num_beats=16, classes=[309], y_s
 def generate_from_audio(gan_video_synth, audio_fname, classes=[309], y_scale=1, truncation=1,
                         random_label=False, ext='.avi', fps=30, quantize_label=False,
                         time_smoothing_alpha=0.0, lowpass_alpha=0.0,
-                        adjust_aspect_ratio=False):
+                        adjust_aspect_ratio=False, chunk_length_seconds=None):
 
   # data shape: [num_samples, num_channels]
   rate, data = scipy.io.wavfile.read(audio_fname)
@@ -408,72 +411,96 @@ def generate_from_audio(gan_video_synth, audio_fname, classes=[309], y_scale=1, 
 
   num_bins, num_frames = mid.shape
 
-  # Create z coordinates by re-binning spectrogram.
-  zs = np.zeros((num_frames, gan_video_synth.dim_z))
-  for frame in range(num_frames):
-    for bin in range(num_bins):
-      mag = mid[bin, frame]
-      if lowpass_alpha > 0:
-        # Exponential decay to weight low frequencies higher. This is a low-pass filter applied per window.
-        mag *= np.exp(-1.0 * lowpass_alpha * mag)
-      # Write each magnitude to a separate z coordinate, and then wrap around.
-      zs[frame, bin % gan_video_synth.dim_z] += mag
-  # Smooth in time, so that the reactions don't happen too quickly
-  # https://en.wikipedia.org/wiki/Exponential_smoothing
-  if time_smoothing_alpha > 0:
-    zs_smoothed = np.zeros((num_frames, gan_video_synth.dim_z))
-    for i in range(num_frames):
-      if i == 0:
-        zs_smoothed[i] = zs[i]
-      else:
-        zs_smoothed[i] = (1.0 - time_smoothing_alpha) * zs[i] + time_smoothing_alpha * zs_smoothed[i - 1]
-    zs = zs_smoothed
-  # Normalize
-  zs /= np.max(np.linalg.norm(zs, axis=1))
-  # Amplify
-  zs *= 3
-
-  # Create ys as in generate_in_tempo().
-  if random_label:
-    # Random label vec
-    y = truncated_z_sample(1, gan_video_synth.vocab_size, truncation, int(datetime.now().strftime('%f')))
+  if chunk_length_seconds is None:
+    chunk_length_frames = num_frames
+    write_chunk_num = False
   else:
-    # Indexed label vec
-    y = np.zeros((1, gan_video_synth.vocab_size))
-    for axis in classes:
-      y[0, axis] = 1
+    chunk_length_frames = int(chunk_length_seconds * fps)
+    write_chunk_num = True
+  start_frame = 0
+  chunk_num = 1
 
-  y = y / np.linalg.norm(y) * y_scale
+  while start_frame < num_frames:
+    # Frame number of end of chunk, exclusive
+    end_frame = min(start_frame + chunk_length_frames, num_frames)
 
-  # Quantize y values to 0 and 1
-  if quantize_label:
-    y = (abs(y) > 0.5).astype(int)
+    # Duration of this chunk, for video-writing codec
+    duration_seconds = (end_frame - start_frame) / fps
 
-  # Expand ys out to full shape
-  ys = np.repeat(y, num_frames, axis=0)
+    # Generate video for this chunk
+    # Create z coordinates by re-binning spectrogram.
+    zs = np.zeros((chunk_length_frames, gan_video_synth.dim_z))
+    for frame in range(chunk_length_frames):
+      for bin in range(num_bins):
+        mag = mid[bin, frame + start_frame]
+        if lowpass_alpha > 0:
+          # Exponential decay to weight low frequencies higher. This is a low-pass filter applied per window.
+          mag *= np.exp(-1.0 * lowpass_alpha * mag)
+        # Write each magnitude to a separate z coordinate, and then wrap around.
+        zs[frame, bin % gan_video_synth.dim_z] += mag
+    # Smooth in time, so that the reactions don't happen too quickly
+    # https://en.wikipedia.org/wiki/Exponential_smoothing
+    if time_smoothing_alpha > 0:
+      zs_smoothed = np.zeros((chunk_length_frames, gan_video_synth.dim_z))
+      for i in range(chunk_length_frames):
+        if i == 0:
+          zs_smoothed[i] = zs[i]
+        else:
+          zs_smoothed[i] = (1.0 - time_smoothing_alpha) * zs[i] + time_smoothing_alpha * zs_smoothed[i - 1]
+      zs = zs_smoothed
+    # Normalize
+    zs /= np.max(np.linalg.norm(zs, axis=1))
+    # Amplify
+    zs *= 3
 
-  # Scale each frame by stereo strength.
-  for i in range(num_frames):
-    ys[i] += ys[i] * normalized_smr[i]
+    # Create ys as in generate_in_tempo().
+    if random_label:
+      # Random label vec
+      y = truncated_z_sample(1, gan_video_synth.vocab_size, truncation, int(datetime.now().strftime('%f')))
+    else:
+      # Indexed label vec
+      y = np.zeros((1, gan_video_synth.vocab_size))
+      for axis in classes:
+        y[0, axis] = 1
 
-  # Generate images
-  ims = gan_video_synth.sample(zs, ys, truncation=truncation, batch_size=1)
+    y = y / np.linalg.norm(y) * y_scale
 
-  if adjust_aspect_ratio:
-    # Transform to 16:9
-    ims = fit_to_ratio(ims)
+    # Quantize y values to 0 and 1
+    if quantize_label:
+      y = (abs(y) > 0.5).astype(int)
 
-  # Save numpy array
-  np.save(os.path.join('npys', 'out.npy'), ims)
-  # Save its hash, for cached reads
-  with open(os.path.join('npys', 'last_hash.txt'), 'w') as f:
-    f.write(str(hash(ims.tostring())) + '\n')
+    # Expand ys out to full shape
+    ys = np.repeat(y, chunk_length_frames, axis=0)
 
-  # Save rendered animation
-  if ext is not None:
-    duration = data.shape[0] / rate
-    # TODO did I break mp4 writing? check!
-    gan_video_synth.write_gif(ims, duration, out_dir='renders', ext=ext, fps=fps, audio_fname=audio_fname)
+    # Scale each frame by stereo strength.
+    for i in range(chunk_length_frames):
+      ys[i] += ys[i] * normalized_smr[i + start_frame]
+
+    # Generate images
+    ims = gan_video_synth.sample(zs, ys, truncation=truncation, batch_size=1)
+
+    if adjust_aspect_ratio:
+      # Transform to 16:9
+      ims = fit_to_ratio(ims)
+
+    # Save numpy array
+    np.save(os.path.join('npys', 'out.npy'), ims)
+    # Save its hash, for cached reads
+    with open(os.path.join('npys', 'last_hash.txt'), 'w') as f:
+      f.write(str(hash(ims.tostring())) + '\n')
+
+    # Save rendered animation
+    if ext is not None:
+      if write_chunk_num:
+        fname_suffix = "_{0:04}".format(chunk_num)
+      # TODO did I break mp4 writing? check!
+      # TODO need to create temporary audio file with chunk and write based on that
+      raise NotImplementedError("need to write temp audio file")
+      gan_video_synth.write_gif(ims, duration_seconds, out_dir='renders', ext=ext, fps=fps, audio_fname=audio_fname, fname_suffix=fname_suffix)
+
+    # Finished generating this chunk's video. Advance to next chunk.
+    start_frame = end_frame
+    chunk_num += 1
 
 
 def _get_parser():
