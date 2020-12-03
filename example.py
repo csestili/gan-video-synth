@@ -411,6 +411,8 @@ def generate_from_audio(gan_video_synth, audio_fname, classes=[309], y_scale=1, 
 
   num_bins, num_frames = mid.shape
 
+  initial_conditions = 0.025 * truncated_z_sample(1, gan_video_synth.vocab_size, truncation, int(datetime.now().strftime('%f')))
+
   if chunk_length_seconds is None:
     chunk_length_frames = num_frames
     write_chunk_num = False
@@ -418,7 +420,7 @@ def generate_from_audio(gan_video_synth, audio_fname, classes=[309], y_scale=1, 
     chunk_length_frames = int(chunk_length_seconds * fps)
     write_chunk_num = True
   start_frame = 0
-  chunk_num = 1
+  chunk_num = 0
 
   while start_frame < num_frames:
     # Frame number of end of chunk, exclusive
@@ -426,6 +428,14 @@ def generate_from_audio(gan_video_synth, audio_fname, classes=[309], y_scale=1, 
 
     # Duration of this chunk, for video-writing codec
     duration_seconds = (end_frame - start_frame) / fps
+
+    if chunk_length_seconds is None:
+      chunk_audio_data = data
+    else:
+      start_sample = rate * chunk_length_seconds * chunk_num
+      end_sample = min(rate * chunk_length_seconds * (chunk_num + 1), data.shape[0])
+      print("Audio bounds are: {} {}".format(start_sample, end_sample))
+      chunk_audio_data = data[start_sample:end_sample]
 
     # Generate video for this chunk
     # Create z coordinates by re-binning spectrogram.
@@ -451,7 +461,7 @@ def generate_from_audio(gan_video_synth, audio_fname, classes=[309], y_scale=1, 
     # Normalize
     zs /= np.max(np.linalg.norm(zs, axis=1))
     # Amplify
-    zs *= 3
+    zs *= 5
 
     # Create ys as in generate_in_tempo().
     if random_label:
@@ -462,6 +472,9 @@ def generate_from_audio(gan_video_synth, audio_fname, classes=[309], y_scale=1, 
       y = np.zeros((1, gan_video_synth.vocab_size))
       for axis in classes:
         y[0, axis] = 1
+
+    # Custom: add slight noise back
+    y += initial_conditions
 
     y = y / np.linalg.norm(y) * y_scale
 
@@ -493,10 +506,10 @@ def generate_from_audio(gan_video_synth, audio_fname, classes=[309], y_scale=1, 
     if ext is not None:
       if write_chunk_num:
         fname_suffix = "_{0:04}".format(chunk_num)
-      # TODO did I break mp4 writing? check!
-      # TODO need to create temporary audio file with chunk and write based on that
-      raise NotImplementedError("need to write temp audio file")
-      gan_video_synth.write_gif(ims, duration_seconds, out_dir='renders', ext=ext, fps=fps, audio_fname=audio_fname, fname_suffix=fname_suffix)
+      # TODO can I use a tempfile instead?
+      tmp_audio_fname = 'tmp_audio.wav'
+      scipy.io.wavfile.write(tmp_audio_fname, rate, chunk_audio_data)
+      gan_video_synth.write_gif(ims, duration_seconds, out_dir='renders', ext=ext, fps=fps, audio_fname=tmp_audio_fname, fname_suffix=fname_suffix)
 
     # Finished generating this chunk's video. Advance to next chunk.
     start_frame = end_frame
